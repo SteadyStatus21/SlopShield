@@ -1,21 +1,24 @@
 {
-  "name": "buildborderless/CommunityForensics-DeepfakeDet-ViT",
+  "name": "Thermostatic/community-forensics-frontier-detector-2026-08 + SlopShield social-video head (agreement rule)",
   "size": 384,
   "resizeShortest": 440,
   "mean": [
-    0.48145466,
-    0.4578275,
-    0.40821073
+    0.485,
+    0.456,
+    0.406
   ],
   "std": [
-    0.26862954,
-    0.26130258,
-    0.27577711
+    0.229,
+    0.224,
+    0.225
   ],
   "aiIndex": 0,
   "labels": [
-    "fake (sigmoid)"
+    "ai (sigmoid)"
   ],
   "inputName": "pixel_values",
-  "bits": 32
+  "rule": "min(head, base-0.740+1.792): head>=0.6 AND base>=0.2",
+  "trainedOn": {
+    "reexportedFrom": "models/_ref/head_out/model.onnx"
+  }
 }

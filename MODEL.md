@@ -12,6 +12,27 @@
 | Size | 87 MB fp32 ONNX (4-bit loses recall, so it isn't used; see below) |
 | Source | `python scripts/fetch_model.py` (`torch.onnx.export`, opset 17). The preprocessing goes into `models/model.json`, which the extension and `scripts/eval.py` read. |
 
+
+## Shipped model (Oct 24, 2026): frontier ViT-S + social-video head, agreement rule
+
+`models/model.onnx` = `Thermostatic/community-forensics-frontier-detector-2026-08` (ViT-S/16 @384, frozen) plus a
+logistic head trained by `scripts/finetune_head.py` on 238 AI clips (Veo 3, Veo 3.1, Kling, Sora, other generators)
+and 240 real AudioSet clips, clean and social-media-degraded. Output = `min(head, calibrated base + 1.79)`: it flags
+only when head >= 0.6 AND base >= 0.2. Rebuild: `python scripts/finetune_head.py --exclude <test dir> --exclude dataset`.
+
+Held-out (never trained on), threshold 0.6:
+
+| Set | Old CommunityForensics | Frontier only | Head only | **Shipped (agreement)** |
+|---|---|---|---|---|
+| Modern AI video caught (60: Sora/Veo3/Veo3.1/Kling) | 14 | 55 | 56 | **53** |
+| Real video flagged (60, AudioSet) | 0 | 11 | 3 | **1** |
+| Real photos flagged (40) | 0 | 0 | 10 | **0** |
+| Game screenshots flagged (30) | 0 | 0 | 8 | **0** |
+| AI still images caught (40, older generators) | 34 | 29 | 30 | 24 |
+| User's in-the-wild AI clips caught (7) | 0 | 3 | 4 | 3 |
+
+The extension's WebGPU path was checked against native CPU outputs (identical to 3 decimals).
+
 ## How it was chosen (measured Oct 24, 2026)
 
 Test sets:

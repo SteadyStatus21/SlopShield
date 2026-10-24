@@ -19,7 +19,7 @@ For each video or image that is at least half on screen (including ones inside s
 
 1. **Platform labels.** Looks for "AI info", "Made with AI", "Altered or synthetic content" and similar in the post around the video. A label is decisive, so no inference runs.
 2. **Text cues.** Scores hashtags (`#sora`, `#veo3`, `#aivideo` …) and caption keywords, combined with noisy-OR. In **fast mode** the pipeline stops here.
-3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, center-crops to the model's input (384 px), and the offscreen document runs the ONNX model, a 22M-param ViT-S from [Community Forensics](https://huggingface.co/papers/2411.04125) (CVPR 2025) trained on 4,803 generators. Frames are combined with a trimmed mean.
+3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, center-crops to the model's input (384 px), and the offscreen document runs the ONNX model, a 22M-param ViT-S (Community Forensics frontier model, Aug 2026) with a head SlopShield trained on modern AI video, flagging only when both agree (see `MODEL.md`: 53/60 modern AI videos caught, 1 false alarm across 130 held-out real videos/photos/games). Frames are combined with a trimmed mean.
 4. **Combine.** A weighted score (`WEIGHTS` in `src/config.ts`) is compared with your threshold. Every verdict comes with `reasons[]`, which the badge or overlay shows.
 
 Verdicts are cached per video (`currentSrc`, or page URL + index for MediaSource players), so a video is never scanned twice.

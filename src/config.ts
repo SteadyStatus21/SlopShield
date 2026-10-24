@@ -54,12 +54,12 @@ export const OFFSCREEN_IDLE_MS = 90_000;
 export const MODEL = {
   path: 'models/model.onnx',
   metaPath: 'models/model.json',
-  // Used only if models/model.json is missing. Matches the default CommunityForensics ViT-S.
+  // Used only if models/model.json is missing. Matches the shipped frontier ViT-S + head (scripts/finetune_head.py).
   fallbackMeta: {
     size: 384,
     resizeShortest: 440,
-    mean: [0.48145466, 0.4578275, 0.40821073],
-    std: [0.26862954, 0.26130258, 0.27577711],
+    mean: [0.485, 0.456, 0.406],
+    std: [0.229, 0.224, 0.225],
     aiIndex: 0,
     inputName: 'pixel_values',
   },
