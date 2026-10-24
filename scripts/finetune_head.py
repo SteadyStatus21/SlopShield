@@ -104,20 +104,66 @@ def to_tensor(img):
     return torch.from_numpy(x.transpose(2, 0, 1).astype(np.float32))
 
 
+# Agreement rule. The new head alone overflags real photos and game captures (10/40 and 8/30 on
+# held-out sets) while the base model alone overflags low-quality real video (11/60); flagging
+# only when both agree had 1 false positive across 160 held-out real items. Encoded as one logit:
+#   out = min(head_logit, base_logit + BIAS + AGREE_SHIFT)
+# which reaches the default threshold (0.6) exactly when head ≥ 0.6 AND calibrated base ≥ 0.2.
+AGREE_HEAD_P, AGREE_BASE_P = 0.6, 0.2
+AGREE_SHIFT = float(np.log(AGREE_HEAD_P / (1 - AGREE_HEAD_P)) - np.log(AGREE_BASE_P / (1 - AGREE_BASE_P)))
+
+
 class Detector(torch.nn.Module):
-    """Frozen ViT + combined head: logit = w·features + v·base_logit + b (exported to ONNX)."""
+    """Frozen ViT + new head, combined with the base model by the agreement rule (exported to ONNX)."""
 
     def __init__(self, vit, w, v, b):
         super().__init__()
         self.vit = vit
-        self.w = torch.nn.Parameter(torch.tensor(w, dtype=torch.float32))
-        self.v = torch.nn.Parameter(torch.tensor(v, dtype=torch.float32))
-        self.b = torch.nn.Parameter(torch.tensor(b, dtype=torch.float32))
+        self.w = torch.nn.Parameter(torch.tensor(np.asarray(w).reshape(-1), dtype=torch.float32))
+        self.v = torch.nn.Parameter(torch.tensor(float(v), dtype=torch.float32))
+        self.b = torch.nn.Parameter(torch.tensor(float(b), dtype=torch.float32))
 
     def forward(self, pixel_values):
         f = self.vit.forward_head(self.vit.forward_features(pixel_values), pre_logits=True)
         base = self.vit.head(f)
-        return f @ self.w[:, None] + base * self.v + self.b
+        head = f @ self.w[:, None] + base * self.v + self.b
+        return torch.minimum(head, base + (BIAS + AGREE_SHIFT))
+
+
+def load_vit(weights):
+    vit = timm.create_model("vit_small_patch16_384", pretrained=False, num_classes=1)
+    weights = Path(weights)
+    if not weights.exists():
+        weights.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(f"https://huggingface.co/{REPO}/resolve/main/model.safetensors", weights)
+    vit.load_state_dict(load_file(str(weights)))
+    return vit.eval()
+
+
+def export(vit, w, v, b, out, trained_on):
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    np.savez(out / "head.npz", w=np.asarray(w).reshape(-1), v=v, b=b)  # lets later runs re-export without retraining
+    torch.onnx.export(Detector(vit, w, v, b).eval(), (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"),
+                      input_names=["pixel_values"], output_names=["logits"],
+                      dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
+                      opset_version=17, do_constant_folding=True, dynamo=False)
+    meta = {"name": f"{REPO} + SlopShield social-video head (agreement rule)", "size": SIZE, "resizeShortest": SHORT,
+            "mean": MEAN, "std": STD, "aiIndex": 0, "labels": ["ai (sigmoid)"], "inputName": "pixel_values",
+            "rule": f"min(head, base{BIAS:+.3f}{AGREE_SHIFT:+.3f}): head>={AGREE_HEAD_P} AND base>={AGREE_BASE_P}",
+            "trainedOn": trained_on}
+    (out / "model.json").write_text(json.dumps(meta, indent=2))
+    print(f"wrote {out / 'model.onnx'} and model.json", flush=True)
+
+
+def head_from_onnx(path):
+    """Recover (w, v, b) from a model exported by this script (for re-exporting without retraining)."""
+    import onnx
+    from onnx import numpy_helper
+
+    inits = {i.name: numpy_helper.to_array(i) for i in onnx.load(str(path)).graph.initializer}
+    w = next(v for k, v in inits.items() if v.shape in ((384, 1), (384,)) and not k.startswith("vit."))
+    return w.reshape(-1), float(inits["v"]), float(inits["b"])
 
 
 def main():
@@ -128,8 +174,14 @@ def main():
     ap.add_argument("--data", default="models/_train")
     ap.add_argument("--out", default="models")
     ap.add_argument("--weights", default="models/_ref/frontier/model.safetensors", help="base model weights (downloaded if missing)")
+    ap.add_argument("--reexport-from", default=None, help="skip training: take the head from this exported ONNX")
     args = ap.parse_args()
     rng = random.Random(0)
+
+    if args.reexport_from:
+        w, v, b = head_from_onnx(args.reexport_from)
+        export(load_vit(args.weights), w, v, b, args.out, {"reexportedFrom": str(args.reexport_from)})
+        return
 
     excluded = {p.stem for d in args.exclude for p in Path(d).rglob("*.mp4")}
     excluded |= {s.split("_", 2)[-1] for s in excluded}  # test files are saved as <label>_<src>_<stem>
@@ -146,28 +198,32 @@ def main():
     print(f"training videos: {sum(label_of.values())} AI, {len(label_of) - sum(label_of.values())} real", flush=True)
     download(jobs, data)
 
-    vit = timm.create_model("vit_small_patch16_384", pretrained=False, num_classes=1)
-    weights = Path(args.weights)
-    if not weights.exists():
-        weights.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(f"https://huggingface.co/{REPO}/resolve/main/model.safetensors", weights)
-    vit.load_state_dict(load_file(str(weights)))
-    vit.eval()
+    vit = load_vit(args.weights)
 
+    # Features are cached per video, so retraining after adding clips only processes new ones.
+    cache_path = data / "features_cache.npz"
+    cache = dict(np.load(cache_path, allow_pickle=True)["cache"].item()) if cache_path.exists() else {}
     feats, base, ys, groups = [], [], [], []
     with torch.no_grad():
         for i, (path, y) in enumerate(label_of.items()):
             if not path.exists():
                 continue
-            for fr in frames(path):
-                for view in (fr, degrade(fr, rng)):
-                    f = vit.forward_head(vit.forward_features(to_tensor(view)[None]), pre_logits=True)
-                    feats.append(f[0].numpy())
-                    base.append(float(vit.head(f)[0, 0]))
-                    ys.append(y)
-                    groups.append(i)
+            if path.name not in cache:
+                rows = []
+                for fr in frames(path):
+                    for view in (fr, degrade(fr, rng)):
+                        f = vit.forward_head(vit.forward_features(to_tensor(view)[None]), pre_logits=True)
+                        rows.append((f[0].numpy(), float(vit.head(f)[0, 0])))
+                cache[path.name] = rows
+            for f, bl in cache[path.name]:
+                feats.append(f)
+                base.append(bl)
+                ys.append(y)
+                groups.append(i)
             if (i + 1) % 25 == 0:
                 print(f"  features: {i + 1}/{len(label_of)} videos", flush=True)
+                np.savez(cache_path, cache=np.array(cache, dtype=object))
+    np.savez(cache_path, cache=np.array(cache, dtype=object))
 
     X = np.hstack([np.array(feats), np.array(base)[:, None]])
     y, g = np.array(ys), np.array(groups)
@@ -180,18 +236,9 @@ def main():
         print(f"{name:14s} recall={tp / (y == 1).sum():.3f}  false-positive rate={fp / (y == 0).sum():.3f}", flush=True)
     clf.fit(X, y)
 
-    w, v, b = clf.coef_[0][:-1], clf.coef_[0][-1], clf.intercept_[0]
-    model = Detector(vit, w, v, b).eval()
-    out = Path(args.out)
-    torch.onnx.export(model, (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"), input_names=["pixel_values"],
-                      output_names=["logits"], dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
-                      opset_version=17, do_constant_folding=True, dynamo=False)
-    meta = {"name": f"{REPO} + SlopShield social-video head", "size": SIZE, "resizeShortest": SHORT, "mean": MEAN,
-            "std": STD, "aiIndex": 0, "labels": ["ai (sigmoid)"], "inputName": "pixel_values",
-            "trainedOn": {"aiVideos": int(sum(label_of.values())), "realVideos": len(label_of) - int(sum(label_of.values()))}}
-    (out / "model.json").write_text(json.dumps(meta, indent=2))
-    print(f"wrote {out / 'model.onnx'} and model.json", flush=True)
-
+    n_ai = int(sum(label_of.values()))
+    export(vit, clf.coef_[0][:-1], clf.coef_[0][-1], clf.intercept_[0], args.out,
+           {"aiVideos": n_ai, "realVideos": len(label_of) - n_ai})
 
 if __name__ == "__main__":
     main()

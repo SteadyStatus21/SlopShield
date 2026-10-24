@@ -3,7 +3,7 @@
 Labels come from the file name prefix (ai_* / real_*), a parent folder named ai/ or real/, or --label.
 Videos (.mp4/.webm/.mov) are sampled into frames first (needs opencv-python).
 
-    pip install onnxruntime pillow numpy opencv-python
+    pip install onnxruntime-directml pillow numpy opencv-python   # or onnxruntime (CPU only)
     python scripts/eval.py demo/videos --frames 5 --threshold 0.6
 """
 
@@ -13,6 +13,7 @@ import sys
 import json
 from pathlib import Path
 
+import cv2
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
@@ -99,12 +100,25 @@ def main():
     ap.add_argument("--meta", default="models/model.json")
     ap.add_argument("--threshold", type=float, default=0.6)
     ap.add_argument("--frames", type=int, default=5, help="frames sampled per video")
+    ap.add_argument("--gpu", action="store_true", help="use DirectML (check results against CPU first)")
+    ap.add_argument("--threads", type=int, default=4, help="CPU threads for the model (default 4 keeps fans down)")
     ap.add_argument("--label", choices=["ai", "real"], default=None,
                     help="treat every file in the folder as this label (for unlabeled folders such as dataset/)")
     args = ap.parse_args()
 
     meta = json.loads(Path(args.meta).read_text())
-    sess = ort.InferenceSession(args.model, providers=["CPUExecutionProvider"])
+    # CPU with a thread cap by default, so evals don't max out a laptop. DirectML (--gpu) is opt-in:
+    # on an Intel Iris Xe (driver as of Oct 2026) it returned a constant for every ViT we tried
+    # and was barely faster (127 vs 136 ms/frame); verify outputs against --cpu before trusting it.
+    cv2.setNumThreads(2)
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = args.threads
+    gpu = args.gpu and "DmlExecutionProvider" in ort.get_available_providers()
+    if gpu:
+        so.enable_mem_pattern = False  # required by the DirectML provider
+    providers = ["DmlExecutionProvider", "CPUExecutionProvider"] if gpu else ["CPUExecutionProvider"]
+    sess = ort.InferenceSession(args.model, so, providers=providers)
+    print(f"  running on {'GPU (DirectML)' if gpu else f'CPU ({args.threads} threads)'}", file=sys.stderr, flush=True)
 
     files = []
     for p in sorted(Path(args.folder).rglob("*")):
