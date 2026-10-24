@@ -1,0 +1,19 @@
+body { width: 300px; margin: 0; padding: 12px 14px; font: 14px system-ui, "Segoe UI", sans-serif; color: #111827; background: #fff; }
+header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+h1 { font-size: 17px; margin: 0; }
+section { padding: 10px 0; border-top: 1px solid #e5e7eb; }
+.label { font-size: 12px; color: #4b5563; margin-bottom: 6px; }
+.pill { font-size: 11px; background: #f3f4f6; border-radius: 999px; padding: 3px 8px; color: #374151; }
+.pill.ok { background: #dcfce7; color: #166534; }
+.pill.bad { background: #fee2e2; color: #991b1b; }
+.seg { display: flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; padding: 8px 0; border: 0; background: #fff; font-size: 14px; cursor: pointer; }
+.seg button + button { border-left: 1px solid #d1d5db; }
+.seg button.on { background: #1d4ed8; color: #fff; }
+.row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.hint { font-size: 11px; color: #6b7280; }
+input[type=range] { width: 100%; }
+#crops { display: flex; gap: 4px; margin-top: 6px; }
+#crops img { flex: 1; min-width: 0; border: 1px solid #e5e7eb; }
+#crops[hidden] { display: none; }
+footer { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid #e5e7eb; padding-top: 8px; }

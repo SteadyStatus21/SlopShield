@@ -1,0 +1,20 @@
+{
+  "name": "slopshield",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that detects AI-generated video locally and flags or blurs it.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "onnxruntime-web": "1.20.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.0.287",
+    "esbuild": "0.24.2",
+    "typescript": "5.7.2"
+  }
+}

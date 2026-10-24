@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "SlopShield",
+  "version": "0.1.0",
+  "description": "Flags or blurs likely AI-generated video. All detection runs on your device.",
+  "permissions": ["activeTab", "tabs", "storage", "offscreen", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background/sw.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/index.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": { "default_popup": "popup/popup.html", "default_title": "SlopShield" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    { "resources": ["ort/*", "models/*"], "matches": ["<all_urls>"] }
+  ]
+}

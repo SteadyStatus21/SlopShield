@@ -1,0 +1,11 @@
+node_modules/
+dist/
+models/*.onnx
+models/_export/
+demo/videos/*.mp4
+eval_frames/
+__pycache__/
+.venv/
+models/_ref/
+dataset/
+models/_train/
