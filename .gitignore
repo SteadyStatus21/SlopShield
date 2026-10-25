@@ -9,3 +9,5 @@ __pycache__/
 models/_ref/
 dataset/
 models/_train/
+# Intel GPU compiler debug output (written when OpenVINO compiles on the iGPU)
+kernel.errors.txt
