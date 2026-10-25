@@ -57,6 +57,21 @@ Then open `chrome://extensions`, enable Developer mode, click **Load unpacked**,
 
 Without `models/model.onnx` the extension still works with labels and text only. The popup shows `model: error`.
 
+### Optional: desktop engine (faster, uses the Intel GPU natively)
+
+`engine/slopshield_engine.py` is a small local app that scores crops with OpenVINO on the GPU
+(Iris Xe: ~47 ms of inference, ~120 ms per crop round trip, vs ~150 ms in-browser WebGPU). When it's running, the extension
+sends crops to it; when it isn't, the extension scores in the browser as before. The popup shows
+which one is active ("desktop engine" / "in-browser").
+
+```bash
+.venv/Scripts/pip install -r engine/requirements.txt
+engine/start_engine.bat            # or: python engine/slopshield_engine.py
+```
+
+It listens only on `127.0.0.1:47321` and accepts only the SlopShield extension (the manifest pins
+the extension ID `jpcjjoehiklpjalioikahehafipnbjjk`), so websites can't use it. Nothing leaves the machine.
+
 ### Demo feed
 
 Put clips in `demo/videos/` named `ai_XX.mp4` / `real_XX.mp4` and list them in `demo/clips.js`. Then serve the folder (content scripts don't run on `file://` unless you allow it) and open http://127.0.0.1:8765/demo/:
