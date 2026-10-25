@@ -35,14 +35,14 @@ export interface BackendInfo {
 
 // content → sw
 export type ContentMsg =
-  | { kind: 'CAPTURE_REQ'; rect: Rect; viewportWidth: number; viewportHeight: number; key?: string }
+  | { kind: 'CAPTURE_REQ'; rect: Rect; viewportWidth: number; viewportHeight: number; key?: string; snapshot?: boolean } // snapshot: store crops for labeling, don't score
   | { kind: 'CACHE_GET'; key: string }
   | { kind: 'CACHE_SET'; key: string; verdict: Verdict }
   | { kind: 'JANK' } // the page had too much long-task time recently
   | { kind: 'LABEL'; key: string; label: Label }; // user says this item is AI / real → engine dataset
 
 export type Label = 'ai' | 'real';
-export type LabelResp = { ok: true; saved: number; folder: string } | { ok: false; error: string };
+export type LabelResp = { ok: true; saved: number; folder: string } | { ok: false; error: string; noFrames?: boolean };
 
 export type CaptureResp =
   | { ok: true; score: number }

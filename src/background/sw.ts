@@ -2,7 +2,7 @@
 import { MODEL, VISION } from '../config';
 import { log, warn } from '../log';
 import { getSettings } from '../settings';
-import type { BackendInfo, CaptureResp, ContentMsg, InferResp, ModelMeta, OffscreenMsg, UiMsg } from '../types';
+import type { BackendInfo, CaptureResp, ContentMsg, InferResp, LabelResp, ModelMeta, OffscreenMsg, UiMsg } from '../types';
 import { captureWindow, cropAll, type CropReq } from './capture';
 
 // ---------- model meta (input size for crops) ----------
@@ -69,6 +69,7 @@ interface Pending {
   windowId: number;
   req: CropReq;
   key?: string; // media key, so its crops can be kept for labeling
+  snapshot?: boolean; // labeling snapshot: keep the crops, skip inference
   resolve: (r: CaptureResp) => void;
 }
 
@@ -110,10 +111,10 @@ function currentBackoff(): number {
   return backoff;
 }
 
-function enqueue(windowId: number, req: CropReq, key?: string): Promise<CaptureResp> {
+function enqueue(windowId: number, req: CropReq, key?: string, snapshot = false): Promise<CaptureResp> {
   if (queue.length >= VISION.maxQueue) return Promise.resolve({ ok: false, reason: 'busy' });
   return new Promise((resolve) => {
-    queue.push({ windowId, req, key, resolve });
+    queue.push({ windowId, req, key, snapshot, resolve });
     schedule();
   });
 }
@@ -148,6 +149,7 @@ async function flush() {
     crops.forEach((c, i) => {
       if (!c.ok) return batch[i].resolve({ ok: false, reason: c.reason });
       if (batch[i].key) rememberCrops(batch[i].key!, c.dataUrls);
+      if (batch[i].snapshot) return batch[i].resolve({ ok: true, score: NaN }); // stored for labeling only
       for (const url of c.dataUrls) {
         tilesFlat.push(url);
         owner.push(i);
@@ -203,7 +205,7 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
       case 'CAPTURE_REQ': {
         const tab = sender.tab;
         if (!tab?.windowId || !tab.active) return { ok: false, reason: 'offscreen' } satisfies CaptureResp;
-        return enqueue(tab.windowId, { rect: msg.rect, viewportWidth: msg.viewportWidth, viewportHeight: msg.viewportHeight }, msg.key);
+        return enqueue(tab.windowId, { rect: msg.rect, viewportWidth: msg.viewportWidth, viewportHeight: msg.viewportHeight }, msg.key, msg.snapshot);
       }
       case 'CACHE_GET': {
         const k = await cacheKey(msg.key);
@@ -214,7 +216,7 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
         return true;
       case 'LABEL': {
         const images = recentCrops.get(msg.key);
-        if (!images?.length) return { ok: false, error: 'no recent frames for this item (scroll it back into view to rescan)' };
+        if (!images?.length) return { ok: false, noFrames: true, error: 'no recent frames for this item' } satisfies LabelResp;
         await ensureOffscreen();
         const fwd: OffscreenMsg = { target: 'offscreen', kind: 'LABEL', label: msg.label, key: msg.key, page: sender.tab?.url ?? '', images };
         return chrome.runtime.sendMessage(fwd);

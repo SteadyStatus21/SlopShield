@@ -69,7 +69,12 @@ function note(m: Media, st: VState, text: string, tone: TagTone = 'info') {
  * "Not AI" on a flagged item also lifts the flag for the rest of this page view.
  */
 async function labelItem(m: Media, st: VState, label: Label): Promise<string> {
-  const resp = await send<LabelResp>({ kind: 'LABEL', key: st.key, label });
+  let resp = await send<LabelResp>({ kind: 'LABEL', key: st.key, label });
+  if (resp && !resp.ok && resp.noFrames) {
+    // Cached verdict (or scanned long ago): no stored crops. Take a clean snapshot now and retry.
+    await snapshot(m, st);
+    resp = await send<LabelResp>({ kind: 'LABEL', key: st.key, label });
+  }
   if (!resp) throw new Error('extension unavailable');
   if (!resp.ok) throw new Error(resp.error);
   if (label === 'real') {
@@ -77,6 +82,41 @@ async function labelItem(m: Media, st: VState, label: Label): Promise<string> {
     render(m, st);
   }
   return `saved as ${label === 'ai' ? 'AI' : 'real'} (${resp.saved} crops)`;
+}
+
+/**
+ * Capture this item's crops for labeling without scoring them. Our overlays, blur and debug tags are
+ * removed for the moment of capture (the model must see the page, not our UI), then restored.
+ */
+async function snapshot(m: Media, st: VState) {
+  const hidden: Array<[Media, VState]> = [];
+  for (const [o, ost] of media) {
+    ost.tag?.hide(true); // never let our UI into a crop
+    if (ost.overlay) {
+      ost.overlay.destroy();
+      ost.overlay = undefined;
+      hidden.push([o, ost]);
+    }
+  }
+  try {
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 80))); // let the page repaint
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const r = m.getBoundingClientRect();
+      const resp = await send<CaptureResp>({
+        kind: 'CAPTURE_REQ',
+        rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+        key: st.key,
+        snapshot: true,
+      });
+      if (resp?.ok || (resp && resp.reason !== 'busy')) break;
+      await sleep(VISION.busyRetryMs);
+    }
+  } finally {
+    for (const ost of media.values()) ost.tag?.hide(false);
+    for (const [o, ost] of hidden) render(o, ost);
+  }
 }
 
 /** A video in the same spot as this image (Instagram/Reddit put a thumbnail <img> under the <video>). */
