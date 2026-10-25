@@ -70,14 +70,25 @@ class Detector:
             logits = self.request.infer({0: self._tensor(url)})[0].ravel()
             if logits.size == 1:
                 z = float(logits[0]) + float(self.meta.get("logitBias", 0.0))
-                out.append(1.0 / (1.0 + np.exp(-z)))
+                out.append(float(1.0 / (1.0 + np.exp(-z))))
             else:
                 e = np.exp(logits - logits.max())
                 out.append(float(e[int(self.meta.get("aiIndex", 0))] / e.sum()))
         return out
 
 
-async def serve(detector: Detector, port: int):
+def save_crops(folder: Path, images: list[str], scores: list[float], keep: int = 60):
+    """Debug: write the exact crops the model scored (score in the file name), keeping the newest `keep`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%H%M%S")
+    for i, (url, s) in enumerate(zip(images, scores)):
+        (folder / f"{stamp}_{int(time.time() * 1000) % 1000:03d}_{i}_p{s:.2f}.png").write_bytes(
+            base64.b64decode(url.split(",", 1)[1]))
+    for old in sorted(folder.glob("*.png"))[:-keep]:
+        old.unlink()
+
+
+async def serve(detector: Detector, port: int, crops_dir: Path | None = None):
     lock = asyncio.Lock()  # one inference at a time; the extension already budgets requests
 
     async def handler(ws):
@@ -105,7 +116,9 @@ async def serve(detector: Detector, port: int):
                             reply = {"type": "error", "id": msg.get("id"), "error": str(e)}
                     await ws.send(json.dumps(reply))
                     if reply["type"] == "scores":
-                        log.info("%d crop(s) -> %s in %d ms", len(scores), [round(s, 2) for s in scores], reply["ms"])
+                        log.info("%d crop(s) -> %s in %d ms", len(scores), [round(float(s), 2) for s in scores], reply["ms"])
+                        if crops_dir:
+                            save_crops(crops_dir, msg["images"], scores)
         except websockets.ConnectionClosed:
             pass
         log.info("extension disconnected")
@@ -120,6 +133,8 @@ def main():
     ap.add_argument("--device", default="AUTO", choices=["AUTO", "GPU", "CPU"])
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--models", default=str(ROOT / "models"))
+    ap.add_argument("--save-crops", nargs="?", const=str(ROOT / "engine" / "last_crops"), default=None,
+                    help="debug: save the crops the model receives (newest 60) to this folder")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S", stream=sys.stdout)
     # Fail fast (before the ~10 s model compile) if another engine already owns the port.
@@ -131,7 +146,7 @@ def main():
             return
     detector = Detector(Path(args.models), args.device)
     try:
-        asyncio.run(serve(detector, args.port))
+        asyncio.run(serve(detector, args.port, Path(args.save_crops) if args.save_crops else None))
     except KeyboardInterrupt:
         log.info("stopped")
 

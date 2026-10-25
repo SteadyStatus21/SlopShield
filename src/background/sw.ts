@@ -15,6 +15,13 @@ function getMeta(): Promise<ModelMeta> {
   return metaPromise;
 }
 
+// Verdicts are cached per model: a verdict from an older/other model must never be reused after
+// the model changes (e.g. a stale 1.00 from a retired model showed up as "cached").
+async function cacheKey(key: string): Promise<string> {
+  const meta = await getMeta();
+  return `v:${meta.name ?? 'model'}:${key}`;
+}
+
 // ---------- offscreen document ----------
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
@@ -184,14 +191,14 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
         return enqueue(tab.windowId, { rect: msg.rect, viewportWidth: msg.viewportWidth, viewportHeight: msg.viewportHeight });
       }
       case 'CACHE_GET': {
-        const k = `v:${msg.key}`;
+        const k = await cacheKey(msg.key);
         return (await chrome.storage.session.get(k))[k] ?? null;
       }
       case 'JANK':
         onJank();
         return true;
       case 'CACHE_SET':
-        await chrome.storage.session.set({ [`v:${msg.key}`]: msg.verdict });
+        await chrome.storage.session.set({ [await cacheKey(msg.key)]: msg.verdict });
         return true;
       case 'GET_STATUS': {
         const { lastCrops } = await chrome.storage.session.get('lastCrops');
