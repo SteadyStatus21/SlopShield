@@ -52,8 +52,9 @@ Also tried on Oct 25 and rejected (same cross-validation): weighting all labels 
 logits instead of `min`; thresholds 0.4-0.8; ensembles of 2-6 MLP seeds; multi-layer backbone features (CLS tokens of
 blocks 3/6/9, mean patch token); cropping the bottom 12-30% of each tile to drop player controls; the low-quality
 continuation of the base model as backbone; Smaug as a second opinion; training on the current-gen clips and 4 more
-Pexels shards (+0.7/68 AI caught on the feed for +1.0/47 real flagged, so they only feed the benchmark). None beat
-the shipped setup.
+Pexels shards (+0.7/68 AI caught on the feed for +1.0/47 real flagged, so they only feed the benchmark); the extra
+Pexels alone (held-out Pexels false alarms 13.7 -> 8.7/198, but -4 shorts, -5 current-gen clips and -0.6/68 on the
+feed). None beat the shipped setup on the user's feed.
 
 How we got here (pooled over the original 4 sets, 114 AI / 140 real): first head 77/114 AI with 7/140 real flagged;
 border-trimmed crops 75/6; expanded data + logistic head 79/2; MLP head 84/2. Then on all 7 sets (538 AI / 338 real):

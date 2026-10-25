@@ -46,6 +46,7 @@ Benchmark: `python scripts/bench.py` scores a head on every held-out set exactly
 | **+ base veto 0.05 → 0.002 — installed** | **288/355** | **6/228** (feed CV: AI 43.3/68, real 4.0/47) |
 | *More held-out sets (183 current-gen AI, Pexels 88 → 198): installed model* | 450/538 | 16/338 |
 | + training on the current-gen clips and extra Pexels (CV) | feed +0.7/68 | feed +1.0/47 — not adopted |
+| + training on the extra Pexels only (CV) | feed −0.6/68, shorts −4, current-gen −5 | Pexels 13.7 → 8.7/198, feed same — not adopted |
 
 Findings → fixes so far:
 - Held-out false positives included carousel photos with big black padding and a meme crop with our
