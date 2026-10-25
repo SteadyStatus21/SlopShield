@@ -36,6 +36,8 @@ Held-out (never trained on), threshold 0.6, `python scripts/bench.py`:
 | User's in-the-wild real flagged (10, held-out labels) | — | 3 | 2 | **1** |
 | **All sets** | — | 93/114 AI, 15/140 real | 86/114, 7/140 | **84/114, 2/140** |
 
+Also tried on Oct 25 and rejected (5-fold cross-validation over all 115 labelled feed items, plus the public sets): weighting the user's labels 8x or 16x instead of 4x; averaging head and base logits instead of `min`; thresholds 0.4-0.8; ensembles of 2-6 MLP seeds; cropping the bottom 12-30% of each tile to drop player controls. None beat the shipped setup, which scores 39/68 AI caught and 3/47 real flagged on the feed items out-of-fold.
+
 How we got here (same benchmark): first head 77/114 AI with 7/140 real flagged; border-trimmed crops 75/6;
 expanded data + logistic head 79/2; MLP head 84/2. Seeds 0-3 of the MLP land at 84-90 AI with 1-4 real flagged;
 32 and 128 units were no better.
@@ -86,6 +88,7 @@ WebGPU is ~10× faster than the CPU path and hits the 2 fps target, which is als
 | `Bombek1/ai-image-detector-siglip-dinov2` | ~700M (SigLIP2-So400m + DINOv2-L, LoRA) | MIT | Reports 97% cross-dataset accuracy, 9% FP on casual photos. 392 px through two large encoders is ~20× our compute: WebGPU-only, not tested. Ships custom `model.py`. |
 | `haywoodsloan/ai-image-detector-deploy` | 195M (SwinV2) | Apache-2.0 | Not tested. |
 | `abacusai/Smaug-AI-Image-Detector` | 439M (EmbeddingGemma-2: Gemma 4 vision tower + 24-layer text stack, fully fine-tuned) | Apache-2.0 | **Tested** (1 centre 528 px crop, PyTorch fp32 CPU). AIGC 1.00 precision / 0.53 recall, 0/40 real and 0/30 games flagged. On *modern* generators only (SD 1.4/1.5/XL, Midjourney, DALL·E 2, Wukong) it caught 14/16 vs CommunityForensics' 12/16 (Midjourney 4/4 vs 2/4). Its card reports 0.973 AUC on OpenFake Reddit vs 0.744 for CommunityForensics. Cost: 10.2 s/image on 1 thread (7.6 s on 14), ~1.75 GB RAM fp32, 878 MB download; no ONNX export exists. Converted to OpenVINO (1.7 s/crop fp16 on Iris Xe) and benchmarked as a second opinion on Oct 25: on the user's held-out feed it ranks AI vs. real worse than chance (AUC 0.45 vs. 0.69 for the shipped model), so it is **not used**. |
+| `Thermostatic/community-forensics-low-quality-detector-2026-08` | 22M (same ViT-S, continued training of our base with downscale/recompression augmentation) | MIT | **Tested Oct 25** as a drop-in backbone. On the 115 items labelled from the user's feed, its base score was *worse* (AUC 0.626 vs 0.658; 29/68 vs 35/68 AI caught), and it flagged 6/30 game screenshots (base model: 0/30). Not used. |
 | `onnx-community/ai-image-detect-distilled-ONNX` | ~15M ViT | MIT | Card reports 72% real-world accuracy. |
 | `Organika/sdxl-detector` | 87M Swin | CC-BY-NC-3.0 | Non-commercial license. |
 | `dima806/ai_vs_real_image_detection` | 86M ViT | Apache-2.0 | Trained on CIFAKE (32 px images). |
