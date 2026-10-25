@@ -78,7 +78,6 @@ interface Pending {
   req: CropReq;
   key?: string; // media key, so its crops can be kept for labeling
   snapshot?: boolean; // labeling snapshot: keep the crops, skip inference
-  tabId?: number; // its tab hides our debug tags for the moment of the screenshot
   resolve: (r: CaptureResp) => void;
 }
 
@@ -120,18 +119,12 @@ function currentBackoff(): number {
   return backoff;
 }
 
-function enqueue(windowId: number, tabId: number | undefined, req: CropReq, key?: string, snapshot = false): Promise<CaptureResp> {
+function enqueue(windowId: number, req: CropReq, key?: string, snapshot = false): Promise<CaptureResp> {
   if (queue.length >= VISION.maxQueue) return Promise.resolve({ ok: false, reason: 'busy' });
   return new Promise((resolve) => {
-    queue.push({ windowId, tabId, req, key, snapshot, resolve });
+    queue.push({ windowId, req, key, snapshot, resolve });
     schedule();
   });
-}
-
-/** Ask the tabs in a batch to hide (and wait until they've repainted) or show our debug tags. */
-async function setTagsHidden(tabIds: number[], hide: boolean) {
-  const msg: TabMsg = { kind: 'UI_HIDE', hide };
-  await Promise.all(tabIds.map((id) => withTimeout(chrome.tabs.sendMessage(id, msg), 300, 'tag hide').catch(() => {})));
 }
 
 function schedule() {
@@ -149,16 +142,12 @@ async function flush() {
   queue.splice(0, queue.length, ...queue.filter((p) => p.windowId !== windowId));
   let inferMs = 0;
 
-  const tabIds = [...new Set(batch.flatMap((p) => (p.tabId === undefined ? [] : [p.tabId])))];
   try {
-    const [meta, settings] = await Promise.all([getMeta(), getSettings()]);
-    await setTagsHidden(tabIds, true);
-    let bitmap: ImageBitmap;
-    try {
-      bitmap = await withTimeout(captureWindow(windowId), VISION.captureTimeoutMs, 'screenshot');
-    } finally {
-      void setTagsHidden(tabIds, false);
-    }
+    const [meta, bitmap, settings] = await Promise.all([
+      getMeta(),
+      withTimeout(captureWindow(windowId), VISION.captureTimeoutMs, 'screenshot'),
+      getSettings(),
+    ]);
     const crops = await cropAll(
       bitmap,
       batch.map((p) => p.req),
@@ -230,7 +219,7 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
       case 'CAPTURE_REQ': {
         const tab = sender.tab;
         if (!tab?.windowId || !tab.active) return { ok: false, reason: 'offscreen' } satisfies CaptureResp;
-        return enqueue(tab.windowId, tab.id, { rect: msg.rect, viewportWidth: msg.viewportWidth, viewportHeight: msg.viewportHeight }, msg.key, msg.snapshot);
+        return enqueue(tab.windowId, { rect: msg.rect, viewportWidth: msg.viewportWidth, viewportHeight: msg.viewportHeight }, msg.key, msg.snapshot);
       }
       case 'CACHE_GET': {
         const k = await cacheKey(msg.key);

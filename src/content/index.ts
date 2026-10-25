@@ -2,7 +2,7 @@
 import { CACHE_MIN_MARGIN, MEDIA_SELECTOR, VISION } from '../config';
 import { log } from '../log';
 import { getSettings, onSettingsChanged } from '../settings';
-import type { CaptureResp, ContentMsg, Label, LabelResp, Settings, TabMsg, Verdict } from '../types';
+import type { CaptureResp, ContentMsg, Label, LabelResp, Rect, Settings, TabMsg, Verdict } from '../types';
 import { isOccluded } from './occlusion';
 import { showBadge, showBlock, showDebugTag, type DebugTag, type Overlay, type TagTone } from './overlay';
 import { combine, findCgiContext, findPlatformLabel, gatherText, parentOf, scoreText, trimmedMean } from './signals';
@@ -71,20 +71,28 @@ function note(m: Media, st: VState, text: string, tone: TagTone = 'info') {
   st.tag.set(text, tone);
 }
 
-// Debug tags are placed next to their item, which can be on top of a neighbouring item; one ended
-// up inside a crop the model scored. The service worker asks us to hide every tag just for the
-// moment of each screenshot (UI_HIDE), so they blink briefly instead of vanishing for the whole
-// request. The safety timer brings them back if the "show" message never arrives.
-let tagsShowTimer: ReturnType<typeof setTimeout> | undefined;
-
-function hideTags(hide: boolean) {
-  clearTimeout(tagsShowTimer);
-  for (const st of media.values()) st.tag?.hide(hide);
-  if (hide) tagsShowTimer = setTimeout(() => hideTags(false), 1500);
-}
-
 function capture(msg: Extract<ContentMsg, { kind: 'CAPTURE_REQ' }>): Promise<CaptureResp | null> {
   return send<CaptureResp>(msg);
+}
+
+/**
+ * The area to capture for m: its rect minus any top/bottom band covered by one of our debug tags.
+ * Tags sit outside their item when there's room, but on full-height media (Reels) they have to sit
+ * inside, and a tag in a crop was once scored by the model. Cutting the band out (~3% of a reel)
+ * beats hiding the tags during captures, which made every tag on the page flicker.
+ */
+function captureRect(m: Media): Rect {
+  const r = m.getBoundingClientRect();
+  let top = r.top;
+  let bottom = r.bottom;
+  for (const st of media.values()) {
+    const t = st.tag?.rect();
+    if (!t || t.right <= r.left || t.left >= r.right || t.bottom <= top || t.top >= bottom) continue;
+    if (t.top + t.height / 2 > (top + bottom) / 2) bottom = Math.min(bottom, t.top - 2);
+    else top = Math.max(top, t.bottom + 2);
+  }
+  if (bottom - top < r.height / 2) [top, bottom] = [r.top, r.bottom]; // tags all over it: keep the whole item
+  return { x: r.left, y: top, width: r.width, height: bottom - top };
 }
 
 /**
@@ -407,10 +415,9 @@ async function sampleFrames(m: Media, st: VState): Promise<number | null | 'inte
     const s = st.prog.scores;
     note(m, st, `frame ${s.length + 1}/${want}${s.length ? ` · avg ${trimmedMean(s).toFixed(2)}` : ''}`);
 
-    const r = m.getBoundingClientRect(); // re-read right before capture; the user may have scrolled
     const resp = await capture({
       kind: 'CAPTURE_REQ',
-      rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+      rect: captureRect(m), // re-read right before capture; the user may have scrolled
       viewportWidth: innerWidth,
       viewportHeight: innerHeight,
       key: st.key, // lets the background keep these crops for a later "Not AI" / "Yes, AI" label
@@ -573,17 +580,9 @@ async function init() {
     }
   });
 
-  chrome.runtime.onMessage.addListener((msg: TabMsg, _sender, sendResponse) => {
-    if (orphaned) return;
-    if (msg.kind === 'UI_HIDE') {
-      hideTags(msg.hide);
-      if (!msg.hide) return;
-      // Reply once a frame without the tags has been painted, so the screenshot can't catch them.
-      requestAnimationFrame(() => requestAnimationFrame(() => sendResponse(true)));
-      return true;
-    }
-    // Popup "Clear cached verdicts": forget every verdict on this page and re-check what's visible.
-    if (msg.kind !== 'CACHE_CLEARED') return;
+  // Popup "Clear cached verdicts": forget every verdict on this page and re-check what's visible.
+  chrome.runtime.onMessage.addListener((msg: TabMsg) => {
+    if (msg.kind !== 'CACHE_CLEARED' || orphaned) return;
     verdicts.clear();
     for (const [m, st] of media) {
       if (st.status === 'scanning') continue; // already producing a fresh verdict

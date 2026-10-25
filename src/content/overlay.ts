@@ -181,6 +181,7 @@ export type TagTone = 'info' | 'real' | 'ai' | 'skip';
 export interface DebugTag {
   set(text: string, tone: TagTone): void;
   hide(hidden: boolean): void; // e.g. while a labeling snapshot is captured
+  rect(): DOMRect | null; // where it is on screen, or null when not shown
   update(): void;
   destroy(): void;
 }
@@ -240,6 +241,7 @@ export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
     },
     update,
     hide: (hidden) => (host.style.display = hidden ? 'none' : ''),
+    rect: () => (host.style.display === 'none' || tag.style.display === 'none' ? null : tag.getBoundingClientRect()),
     destroy: () => host.remove(),
   };
 }

@@ -63,7 +63,7 @@ export type UiMsg = { kind: 'GET_STATUS' } | { kind: 'CLEAR_CACHE' };
 export type ClearCacheResp = { cleared: number };
 
 // sw → content scripts
-export type TabMsg = { kind: 'CACHE_CLEARED' } | { kind: 'UI_HIDE'; hide: boolean }; // UI_HIDE: around each screenshot
+export type TabMsg = { kind: 'CACHE_CLEARED' };
 
 export type Msg = ContentMsg | OffscreenMsg | UiMsg;
 
