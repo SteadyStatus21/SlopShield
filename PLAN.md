@@ -57,11 +57,11 @@ Findings → fixes so far:
 
 ## Priority 3 — submission (keep ≥3 h before noon for this)
 
-- [ ] `demo/videos/` + `demo/clips.js`: 10+ labelled clips (half real, half AI) for the live demo; demo must work offline.
+- [x] `demo/videos/` + `demo/clips.js`: 11 held-out bench clips (5 AI, 6 real incl. a cartoon), captions written to match; mapping in `clips.js`. Serve with `python -m http.server 8765 --bind 127.0.0.1`, open http://127.0.0.1:8765/demo/.
 - [ ] README: problem statement with sources, final eval tables (from `MODEL.md`), limitations, setup.
 - [ ] ≤5 min video: problem → live scroll on demo feed/X → block → Wi-Fi off → numbers → limitations → next steps.
 - [ ] Devpost write-up.
-- [ ] Rebuild `dist/` from a clean checkout to confirm setup instructions work (`npm ci`, `scripts/finetune_head.py --reexport-from` or fetch, `npm run build`).
+- [x] Rebuild `dist/` from a clean checkout: `git clone` (pulls `models/model.onnx` via LFS) → `npm ci` → `npm run build` gives a `dist/` identical to the shipped one (checked Oct 25).
 
 ## Next steps to pitch (not building now)
 
