@@ -51,8 +51,21 @@ def bench_video_stems():
 
 
 def rows(ds, offset, length=10, config="default", split="train"):
+    """datasets-server rows, with back-off on rate limits (HTTP 429) instead of hammering the API."""
+    import time
+    import urllib.error
+
     q = urllib.parse.urlencode({"dataset": ds, "config": config, "split": split, "offset": offset, "length": length})
-    return json.load(urllib.request.urlopen(f"https://datasets-server.huggingface.co/rows?{q}", timeout=60))
+    for attempt in range(6):
+        try:
+            return json.load(urllib.request.urlopen(f"https://datasets-server.huggingface.co/rows?{q}", timeout=60))
+        except urllib.error.HTTPError as e:
+            if e.code != 429:
+                raise
+            wait = 15 * 2 ** attempt
+            say(f"    rate-limited by Hugging Face; waiting {wait}s")
+            time.sleep(wait)
+    raise RuntimeError("still rate-limited after retries")
 
 
 def fetch_stills(ds, n, out_dir, prefix, keep, bad_hashes, rng, total=None, img_col="image"):
@@ -206,7 +219,9 @@ def fetch_real_photos(n, bad, rng):
     ds = "TheKernel01/AIGC-Detection-Benchmark"
     have = len(list(out.glob("photo_*")))
     total = 125026
-    while have < n:
+    tries = 0
+    while have < n and tries < n:
+        tries += 1
         try:
             batch = rows(ds, rng.randrange(0, total - 10), 10, split="test")["rows"]
         except Exception as e:
