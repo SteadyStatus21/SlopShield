@@ -45,6 +45,11 @@ export const VISION = {
   jankLongTaskMs: 250,
   maxBackoff: 8,
   backoffRecoverMs: 10_000,
+  // Never rest longer than this between batches: one slow batch (e.g. the in-browser model's cold
+  // start) must not freeze scanning for minutes while every item gets 'busy'.
+  maxRestMs: 4000,
+  captureTimeoutMs: 5000, // a screenshot that takes longer fails this frame instead of wedging the queue
+  inferTimeoutMs: 30_000, // generous: a cold in-browser WebGPU load can take ~15 s on an iGPU
 };
 
 // Low resource use: the offscreen doc (and the model in RAM/VRAM) is torn down after

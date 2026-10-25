@@ -45,10 +45,18 @@ async function ensureOffscreen() {
 
 let backend: BackendInfo = { backend: 'none', modelLoaded: false };
 
+/** Reject if `p` hasn't settled within `ms` (so a lost reply can't hold the capture queue forever). */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([p, new Promise<never>((_, reject) => (t = setTimeout(() => reject(new Error(`${what} timed out`)), ms)))]).finally(
+    () => clearTimeout(t),
+  );
+}
+
 async function infer(images: string[], gpu: boolean): Promise<number[]> {
   await ensureOffscreen();
   const msg: OffscreenMsg = { target: 'offscreen', kind: 'INFER', images, gpu };
-  const resp: InferResp = await chrome.runtime.sendMessage(msg);
+  const resp: InferResp = await withTimeout(chrome.runtime.sendMessage(msg), VISION.inferTimeoutMs, 'inference');
   if (!resp?.ok) {
     backend = { ...backend, modelLoaded: false, error: resp?.error ?? 'no response' };
     throw new Error(backend.error);
@@ -135,7 +143,11 @@ async function flush() {
   let inferMs = 0;
 
   try {
-    const [meta, bitmap, settings] = await Promise.all([getMeta(), captureWindow(windowId), getSettings()]);
+    const [meta, bitmap, settings] = await Promise.all([
+      getMeta(),
+      withTimeout(captureWindow(windowId), VISION.captureTimeoutMs, 'screenshot'),
+      getSettings(),
+    ]);
     const crops = await cropAll(
       bitmap,
       batch.map((p) => p.req),
@@ -177,7 +189,9 @@ async function flush() {
         for (const [i, { sum, n }] of sums) batch[i].resolve({ ok: true, score: 1 / (1 + Math.exp(-sum / n)) });
       } catch (e) {
         warn('inference failed', e);
-        for (const i of new Set(owner)) batch[i].resolve({ ok: false, reason: 'model', detail: String(e) });
+        // A timeout is transient (the frame just fails); anything else means no model is available.
+        const reason = /timed out/.test(String(e)) ? 'error' : 'model';
+        for (const i of new Set(owner)) batch[i].resolve({ ok: false, reason, detail: String(e) });
       } finally {
         inferMs = Date.now() - t0;
       }
@@ -190,7 +204,7 @@ async function flush() {
   } finally {
     inFlight = false;
     const rest = inferMs * (1 / VISION.maxDutyCycle - 1);
-    nextAllowed = Date.now() + Math.max(VISION.minCaptureIntervalMs, rest) * currentBackoff();
+    nextAllowed = Date.now() + Math.min(VISION.maxRestMs, Math.max(VISION.minCaptureIntervalMs, rest) * currentBackoff());
     schedule();
   }
 }

@@ -159,14 +159,27 @@ async function scoreOnEngine(images: string[]): Promise<number[]> {
   return (await askEngine({ type: 'score', images })).scores;
 }
 
+/**
+ * A freshly created offscreen document gets its first request before the engine socket has said
+ * hello. Wait briefly instead of cold-loading the in-browser model on WebGPU, which stalls the GPU
+ * (videos flicker) for many seconds when the engine would have answered in ~0.1 s.
+ */
+async function engineReady(maxMs = 1500): Promise<boolean> {
+  const until = Date.now() + maxMs;
+  while (engine && !engineDevice && engine.readyState <= WebSocket.OPEN && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return engine?.readyState === WebSocket.OPEN && !!engineDevice;
+}
+
 async function inferAll(images: string[], gpu: boolean): Promise<InferResp> {
   connectEngine();
-  if (engine?.readyState === WebSocket.OPEN && engineDevice) {
+  if (await engineReady()) {
     try {
       const t0 = performance.now();
       const scores = await scoreOnEngine(images);
       log(`${images.length} tile(s) on engine: P(AI)=[${scores.map((p) => p.toFixed(2)).join(', ')}] in ${(performance.now() - t0).toFixed(0)}ms`);
-      return { ok: true, scores, backend: 'engine', device: engineDevice };
+      return { ok: true, scores, backend: 'engine', device: engineDevice ?? undefined };
     } catch (e) {
       warn('engine failed, falling back to in-browser model', e);
     }
