@@ -55,22 +55,23 @@
   padding: 12px;
   overflow: hidden;
 }
-.panel { max-width: 420px; }
-.panel h2 { margin: 0 0 6px; font-size: 20px; font-weight: 700; }
-.panel p { margin: 0 0 8px; font-size: 14px; line-height: 1.4; }
-.panel ul { margin: 0 0 12px; padding: 0; list-style: none; font-size: 13px; opacity: 0.9; }
-.panel button {
-  font-size: 15px;
-  padding: 9px 16px;
+.panel { max-width: 340px; }
+.panel h2 { margin: 0 0 4px; font-size: 17px; font-weight: 700; line-height: 1.25; }
+.panel p { margin: 0 0 10px; font-size: 12px; line-height: 1.35; opacity: 0.85; }
+.panel .actions { display: flex; justify-content: center; }
+.panel .fb { margin-top: 8px; }
+.panel button.reveal {
+  font-size: 14px;
+  padding: 7px 14px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   cursor: pointer;
 }
-.panel button:hover { background: rgba(255, 255, 255, 0.25); }
-.small .panel h2 { font-size: 15px; }
-.small .panel p, .small .panel ul { display: none; }
+.panel button.reveal:hover { background: rgba(255, 255, 255, 0.25); }
+.small .panel h2 { font-size: 14px; }
+.small .panel p, .small .fbmsg { display: none; }
 
 .dbg {
   position: fixed;

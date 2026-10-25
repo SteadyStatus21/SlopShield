@@ -109,17 +109,25 @@ def to_tensor(img):
 # only when both agree had 1 false positive across 160 held-out real items. Encoded as one logit:
 #   out = min(head_logit, base_logit + BIAS + AGREE_SHIFT)
 # which reaches the default threshold (0.6) exactly when head ≥ 0.6 AND calibrated base ≥ 0.2.
-AGREE_HEAD_P, AGREE_BASE_P = 0.6, 0.2
-AGREE_SHIFT = float(np.log(AGREE_HEAD_P / (1 - AGREE_HEAD_P)) - np.log(AGREE_BASE_P / (1 - AGREE_BASE_P)))
+AGREE_HEAD_P, AGREE_BASE_P = 0.6, 0.05  # gate lowered from 0.2 on Oct 24 (held-out sweep: +2/12 AI, +1/30 games)
+
+
+def agree_shift(base_p: float = AGREE_BASE_P) -> float:
+    """Logit shift so min(head, base + BIAS + shift) reaches AGREE_HEAD_P exactly when base == base_p."""
+    return float(np.log(AGREE_HEAD_P / (1 - AGREE_HEAD_P)) - np.log(base_p / (1 - base_p)))
+
+
+AGREE_SHIFT = agree_shift()
 
 
 class Detector(torch.nn.Module):
     """Frozen ViT + new head, combined with the base model by the agreement rule (exported to ONNX)."""
 
-    def __init__(self, vit, w, v, b, agree=True):
+    def __init__(self, vit, w, v, b, agree=True, base_p=AGREE_BASE_P):
         super().__init__()
         self.vit = vit
         self.agree = agree
+        self.shift = agree_shift(base_p)
         self.w = torch.nn.Parameter(torch.tensor(np.asarray(w).reshape(-1), dtype=torch.float32))
         self.v = torch.nn.Parameter(torch.tensor(float(v), dtype=torch.float32))
         self.b = torch.nn.Parameter(torch.tensor(float(b), dtype=torch.float32))
@@ -130,7 +138,7 @@ class Detector(torch.nn.Module):
         head = f @ self.w[:, None] + base * self.v + self.b
         if not self.agree:
             return head
-        return torch.minimum(head, base + (BIAS + AGREE_SHIFT))
+        return torch.minimum(head, base + (BIAS + self.shift))
 
 
 def load_vit(weights):
@@ -143,17 +151,17 @@ def load_vit(weights):
     return vit.eval()
 
 
-def export(vit, w, v, b, out, trained_on, agree=True):
+def export(vit, w, v, b, out, trained_on, agree=True, base_p=AGREE_BASE_P):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    np.savez(out / "head.npz", w=np.asarray(w).reshape(-1), v=v, b=b, agree=agree)  # lets later runs re-export without retraining
-    torch.onnx.export(Detector(vit, w, v, b, agree).eval(), (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"),
+    np.savez(out / "head.npz", w=np.asarray(w).reshape(-1), v=v, b=b, agree=agree, base_p=base_p)  # lets later runs re-export without retraining
+    torch.onnx.export(Detector(vit, w, v, b, agree, base_p).eval(), (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"),
                       input_names=["pixel_values"], output_names=["logits"],
                       dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
                       opset_version=17, do_constant_folding=True, dynamo=False)
     meta = {"name": f"{REPO} + SlopShield social-video head (agreement rule)", "size": SIZE, "resizeShortest": SHORT,
             "mean": MEAN, "std": STD, "aiIndex": 0, "labels": ["ai (sigmoid)"], "inputName": "pixel_values",
-            "rule": (f"min(head, base{BIAS:+.3f}{AGREE_SHIFT:+.3f}): head>={AGREE_HEAD_P} AND base>={AGREE_BASE_P}"
+            "rule": (f"min(head, base{BIAS:+.3f}{agree_shift(base_p):+.3f}): head>={AGREE_HEAD_P} AND base>={base_p}"
                      if agree else "head only"),
             "trainedOn": trained_on}
     (out / "model.json").write_text(json.dumps(meta, indent=2))

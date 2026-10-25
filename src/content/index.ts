@@ -3,6 +3,7 @@ import { MEDIA_SELECTOR, VISION } from '../config';
 import { log } from '../log';
 import { getSettings, onSettingsChanged } from '../settings';
 import type { CaptureResp, ContentMsg, Label, LabelResp, Settings, Verdict } from '../types';
+import { isOccluded } from './occlusion';
 import { showBadge, showBlock, showDebugTag, type DebugTag, type Overlay, type TagTone } from './overlay';
 import { combine, findCgiContext, findPlatformLabel, gatherText, parentOf, scoreText, trimmedMean } from './signals';
 
@@ -60,6 +61,12 @@ function shutdown() {
 /** Debug mode: show what the pipeline is doing with this element. */
 function note(m: Media, st: VState, text: string, tone: TagTone = 'info') {
   if (!settings.debug) return;
+  if (text.startsWith('skipped: thumbnail')) {
+    // The video in the same spot has its own tag; a second one with label buttons is just clutter.
+    st.tag?.destroy();
+    st.tag = undefined;
+    return;
+  }
   st.tag ??= showDebugTag(m, (label) => labelItem(m, st, label));
   st.tag.set(text, tone);
 }
@@ -204,7 +211,8 @@ function isVisibleEnough(m: Media): boolean {
   const visW = Math.min(r.right, innerWidth) - Math.max(r.left, 0);
   const visH = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
   if (visW <= 0 || visH <= 0) return false;
-  return (visW * visH) / (r.width * r.height) >= VISION.minVisibleRatio && document.visibilityState === 'visible';
+  if ((visW * visH) / (r.width * r.height) < VISION.minVisibleRatio || document.visibilityState !== 'visible') return false;
+  return !isOccluded(m); // e.g. the feed behind an open post viewer: don't scan (or overlay) what can't be seen
 }
 
 // ---------- discovery ----------

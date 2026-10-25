@@ -1,5 +1,6 @@
 // Blur + badge + "Show anyway", plus "Yes, AI" / "Not AI" feedback that becomes training data.
 import css from './overlay.css';
+import { isOccluded } from './occlusion';
 import type { Label, Verdict } from '../types';
 
 /** Saves this item as AI / real via the desktop engine; resolves to a short status message. */
@@ -37,13 +38,13 @@ function mount(media: HTMLElement) {
 
   const position = () => {
     const r = media.getBoundingClientRect();
-    const hidden = !media.isConnected || r.width === 0 || r.height === 0;
+    const hidden = !media.isConnected || r.width === 0 || r.height === 0 || isOccluded(media);
     frame.style.display = hidden ? 'none' : '';
     frame.style.left = `${r.left}px`;
     frame.style.top = `${r.top}px`;
     frame.style.width = `${r.width}px`;
     frame.style.height = `${r.height}px`;
-    frame.classList.toggle('small', r.height < 260);
+    frame.classList.toggle('small', r.height < 300 || r.width < 300);
   };
   position();
   return { host, frame, position };
@@ -146,21 +147,15 @@ export function showBlock({ media, verdict, onReveal, onLabel, stacked = [] }: O
 
   const block = el('div', 'block');
   const panel = el('div', 'panel');
-  panel.append(
-    el('h2', undefined, `⚠ This ${video ? 'video' : 'image'} is likely AI-generated`),
-    el(
-      'p',
-      undefined,
-      `SlopShield score: ${pct(verdict)}. Detection can be wrong, so check the reasons below. Be careful with requests for money or personal details.`,
-    ),
-  );
-  const ul = el('ul');
-  for (const r of verdict.reasons) ul.append(el('li', undefined, r));
-  panel.append(ul);
-
-  const reveal = el('button', undefined, 'Show anyway');
+  // Compact: title, one line of context, one row of actions. Full reasons on hover (title).
+  const title = el('h2', undefined, `⚠ Likely AI-generated ${video ? 'video' : 'image'}`);
+  const sub = el('p', undefined, `Score ${pct(verdict)} · can be wrong · be careful with requests for money`);
+  panel.title = verdict.reasons.join(' · ');
+  const reveal = el('button', 'reveal', 'Show anyway');
   reveal.addEventListener('click', () => done());
-  panel.append(reveal);
+  const actions = el('div', 'actions');
+  actions.append(reveal);
+  panel.append(title, sub, actions);
   // "Not AI" saves it as a real example and reveals it right away.
   if (onLabel) panel.append(feedback(onLabel, (label) => label === 'real' && setTimeout(done, 600)));
   // Clicks on the overlay must not reach the player underneath.
@@ -225,7 +220,8 @@ export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
 
   const update = () => {
     const r = media.getBoundingClientRect();
-    const hidden = !media.isConnected || r.width === 0 || r.height === 0 || r.bottom < 0 || r.top > innerHeight;
+    const hidden =
+      !media.isConnected || r.width === 0 || r.height === 0 || r.bottom < 0 || r.top > innerHeight || isOccluded(media);
     tag.style.display = hidden ? 'none' : '';
     if (hidden) return;
     const h = tag.offsetHeight || 20;

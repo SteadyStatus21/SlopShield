@@ -138,19 +138,19 @@ def save_cache(cache):
 
 # ---------- scoring ----------
 
-def logits(F, B, head, rule):
+def logits(F, B, head, rule, base_p=fh.AGREE_BASE_P):
     w, v, b = head
     h = F @ w + B * v + b
     if rule == "agree":
-        h = np.minimum(h, B + fh.BIAS + fh.AGREE_SHIFT)
+        h = np.minimum(h, B + fh.BIAS + fh.agree_shift(base_p))
     return h
 
 
-def item_probs(rows, head, rule):
+def item_probs(rows, head, rule, base_p=fh.AGREE_BASE_P):
     """Per item: mean tile logit → probability (as the extension does)."""
     out = {}
     for item, (y, F, B) in rows.items():
-        out[item] = (y, float(1 / (1 + np.exp(-logits(F, B, head, rule).mean()))))
+        out[item] = (y, float(1 / (1 + np.exp(-logits(F, B, head, rule, base_p).mean()))))
     return out
 
 
@@ -168,6 +168,9 @@ def main():
                     help="agree: flag only if new head AND base model agree (fewer false alarms); head: new head alone")
     ap.add_argument("--user-weight", type=float, default=4.0, help="how much more your labels count than the HF set")
     ap.add_argument("--dry-run", action="store_true", help="train and report, but don't install")
+    ap.add_argument("--base-gate", type=float, default=fh.AGREE_BASE_P,
+                    help="agree rule: base model must give at least this (lower = catches more, more false alarms)")
+    ap.add_argument("--reexport", action="store_true", help="skip training: re-export the installed head (e.g. new --base-gate)")
     args = ap.parse_args()
     t_start = time.time()
 
@@ -176,6 +179,18 @@ def main():
     say("=" * 72)
 
     vit = fh.load_vit(str(MODELS / "_ref" / "frontier" / "model.safetensors"))
+    if args.reexport:
+        h = np.load(MODELS / "head.npz")
+        backup = MODELS / "_ref" / "backups" / time.strftime("%Y%m%d-%H%M%S")
+        backup.mkdir(parents=True, exist_ok=True)
+        for name in ("model.onnx", "model.json", "head.npz"):
+            if (MODELS / name).exists():
+                shutil.copy2(MODELS / name, backup / name)
+        say(f"re-exporting installed head with rule={args.rule}, base gate={args.base_gate} (backup: {backup.relative_to(ROOT)})")
+        fh.export(vit, h["w"], float(h["v"]), float(h["b"]), MODELS, {"reexported": time.strftime("%Y-%m-%d %H:%M")},
+                  agree=args.rule == "agree", base_p=args.base_gate)
+        say("Done. Rebuild (npm run build), restart the engine, reload the extension.")
+        return
     if not FEATURES_ONNX.exists():
         say("[1/6] building GPU feature extractor (one-time) ...")
         build_feature_model(vit)
@@ -258,19 +273,23 @@ def main():
     o = np.load(old_path)
     old_head = (o["w"], float(o["v"]), float(o["b"]))
     old_rule = "agree" if ("agree" not in o or bool(o["agree"])) else "head"
+    old_gate = float(o["base_p"]) if "base_p" in o else 0.2
 
     # --- scorecard ---
     hold_rows = {k: user_rows[k] for k in hold if k in user_rows}
     train_rows = {k: user_rows[k] for k in tr_items}
     say("[5/6] scorecard (threshold 0.6, per item)")
     say("  HELD-OUT items (never trained on) -- the honest numbers:")
-    say("    " + scorecard(f"current model ({old_rule})", item_probs(hold_rows, old_head, old_rule)))
-    for rule in ("agree", "head"):
-        say("    " + scorecard(f"new head, rule={rule}" + (" <- installs" if rule == args.rule else ""), item_probs(hold_rows, new_head, rule)))
+    say("    " + scorecard(f"current model ({old_rule}, gate {old_gate:g})", item_probs(hold_rows, old_head, old_rule, old_gate)))
+    for gate in (0.2, 0.1, 0.05, 0.02):
+        mark = " <- installs" if args.rule == "agree" and abs(gate - args.base_gate) < 1e-9 else ""
+        say("    " + scorecard(f"new head, agree, gate {gate:g}{mark}", item_probs(hold_rows, new_head, "agree", gate)))
+    say("    " + scorecard("new head alone" + (" <- installs" if args.rule == "head" else ""), item_probs(hold_rows, new_head, "head")))
+    say("    (head alone also flagged 9/40 real photos + 6/30 game screenshots in an earlier check; the gate prevents that)")
     say("  YOUR TRAINING items (in-sample, optimistic; shows it learned your labels):")
-    say("    " + scorecard(f"current model ({old_rule})", item_probs(train_rows, old_head, old_rule)))
-    say("    " + scorecard(f"new head, rule={args.rule}", item_probs(train_rows, new_head, args.rule)))
-    wrong = [(k, y, p) for k, (y, p) in item_probs(hold_rows, new_head, args.rule).items() if (p >= THRESHOLD) != (y == 1)]
+    say("    " + scorecard(f"current model ({old_rule}, gate {old_gate:g})", item_probs(train_rows, old_head, old_rule, old_gate)))
+    say("    " + scorecard(f"new head, rule={args.rule}, gate {args.base_gate:g}", item_probs(train_rows, new_head, args.rule, args.base_gate)))
+    wrong = [(k, y, p) for k, (y, p) in item_probs(hold_rows, new_head, args.rule, args.base_gate).items() if (p >= THRESHOLD) != (y == 1)]
     if wrong:
         say("  held-out mistakes of the new model:")
         for k, y, p in sorted(wrong):
@@ -288,7 +307,7 @@ def main():
     say(f"[6/6] backed up current model to {backup.relative_to(ROOT)}; exporting new model ...")
     fh.export(vit, *new_head, MODELS, {"hfClips": len(hf_videos), "yourItems": len(tr_items), "heldOut": len(hold_rows),
                                        "userWeight": args.user_weight, "trainedAt": time.strftime("%Y-%m-%d %H:%M")},
-              agree=args.rule == "agree")
+              agree=args.rule == "agree", base_p=args.base_gate)
     say(f"Done in {time.time() - t_start:.0f}s. Installed models/model.onnx ({args.rule} rule).")
     say("Undo: copy the files from the backup folder above back into models/.")
 
