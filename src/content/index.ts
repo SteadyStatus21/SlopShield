@@ -24,6 +24,10 @@ interface VState {
   verdict?: Verdict;
   overlay?: Overlay;
   tag?: DebugTag; // debug mode: live status next to the element
+  // Bumped whenever the element starts showing a different item (YouTube Shorts reuses one <video>
+  // for every short). A scan that started under an older gen drops its result instead of
+  // pinning the previous item's verdict on the new one.
+  gen: number;
 }
 
 const media = new Map<Media, VState>();
@@ -257,11 +261,14 @@ const io = new IntersectionObserver(
 function register(m: Media) {
   if (media.has(m)) return;
   const key = keyFor(m);
-  media.set(m, { key, status: 'idle', visible: false, prog: progressFor(key) });
+  media.set(m, { key, status: 'idle', visible: false, prog: progressFor(key), gen: 0 });
   io.observe(m);
   // Players like YouTube reuse one <video> across navigations, and lazy images swap src on load;
   // rescan when the source changes.
   m.addEventListener(isVideo(m) ? 'loadeddata' : 'load', () => maybeScan(m));
+  // loadstart fires as soon as a new source begins loading, so the previous item's banner/block comes
+  // off right away instead of sitting on the next video until its first frame arrives.
+  if (isVideo(m)) m.addEventListener('loadstart', () => maybeScan(m));
   // A video starting to play inside an already-blocked spot must be blocked too.
   if (isVideo(m)) {
     m.addEventListener('play', () => extendBlocksTo(m));
@@ -345,7 +352,7 @@ async function maybeScan(m: Media) {
   const key = keyFor(m);
   if (key !== st.key) {
     st.overlay?.destroy();
-    Object.assign(st, { key, status: 'idle', prog: progressFor(key), verdict: undefined, overlay: undefined });
+    Object.assign(st, { key, status: 'idle', prog: progressFor(key), verdict: undefined, overlay: undefined, gen: st.gen + 1 });
   }
   if (st.status !== 'idle') return;
   // Skip icons/avatars before doing any work (also re-checked right before capture).
@@ -357,9 +364,11 @@ async function maybeScan(m: Media) {
     return;
   }
   st.status = 'scanning';
+  const gen = st.gen;
   note(m, st, 'checking…');
 
   const cached = verdicts.get(key) ?? (await send<Verdict | null>({ kind: 'CACHE_GET', key }));
+  if (st.gen !== gen) return; // the element moved on to another item while we waited
   if (cached) {
     verdicts.set(key, cached);
     finish(m, st, cached, true);
@@ -378,7 +387,8 @@ async function maybeScan(m: Media) {
   let vision: number | null = null;
   if (!label && !cgi && !settings.fastMode) {
     // 3. Vision.
-    const res = await sampleFrames(m, st);
+    const res = await sampleFrames(m, st, gen);
+    if (res === 'stale') return; // a newer scan owns this element now
     if (res === 'interrupted') {
       st.status = 'idle'; // resume when it becomes visible again
       return;
@@ -397,9 +407,18 @@ async function maybeScan(m: Media) {
   finish(m, st, verdict);
 }
 
-async function sampleFrames(m: Media, st: VState): Promise<number | null | 'interrupted'> {
+/** True (and a fresh scan is started) if m now shows a different item than the scan of `gen` began with. */
+function staleScan(m: Media, st: VState, gen: number): boolean {
+  if (st.gen !== gen) return true;
+  if (keyFor(m) === st.key) return false;
+  maybeScan(m); // resets the state (bumping gen) and scans the new item
+  return true;
+}
+
+async function sampleFrames(m: Media, st: VState, gen: number): Promise<number | null | 'interrupted' | 'stale'> {
   const want = isVideo(m) ? VISION.framesPerVideo : VISION.framesPerImage;
   while (st.prog.scores.length < want && st.prog.attempts < VISION.maxAttemptsPerVideo) {
+    if (staleScan(m, st, gen)) return 'stale';
     const why = !m.isConnected || !active() ? 'removed/off' : !isVisibleEnough(m) ? 'not visible' : videoOver(m) ? 'video on top' : null;
     if (why) {
       // (A video appearing on top of an image takes over the spot; see maybeScan.)
@@ -422,6 +441,7 @@ async function sampleFrames(m: Media, st: VState): Promise<number | null | 'inte
       viewportHeight: innerHeight,
       key: st.key, // lets the background keep these crops for a later "Not AI" / "Yes, AI" label
     });
+    if (staleScan(m, st, gen)) return 'stale'; // swapped to another item while this frame was in flight: drop it
     if (resp && !resp.ok && resp.reason === 'busy') {
       // The model is working on something else or resting; wait our turn (doesn't count as an attempt).
       note(m, st, `queued (frame ${s.length + 1}/${want})`);
@@ -551,6 +571,15 @@ function watchJank() {
   }, JANK_TICK_MS);
 }
 
+// Single-page apps (YouTube Shorts, Reels) swap the item under the same element as the URL changes,
+// sometimes without a fresh load event. Re-check identities on every navigation.
+let lastHref = location.href;
+function watchUrl() {
+  if (location.href === lastHref) return;
+  lastHref = location.href;
+  for (const [m, st] of media) if (keyFor(m) !== st.key) maybeScan(m);
+}
+
 let rafPending = false;
 function reposition() {
   if (rafPending) return;
@@ -597,7 +626,10 @@ async function init() {
   mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
   addEventListener('scroll', reposition, { capture: true, passive: true });
   addEventListener('resize', reposition, { passive: true });
-  repositionTimer = setInterval(reposition, 500); // layout shifts that don't scroll
+  repositionTimer = setInterval(() => {
+    reposition(); // layout shifts that don't scroll
+    watchUrl();
+  }, 500);
   watchJank();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') for (const [m, st] of media) if (st.visible) maybeScan(m);
