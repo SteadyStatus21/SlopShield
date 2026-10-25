@@ -122,6 +122,13 @@ def main():
     ap.add_argument("--models", default=str(ROOT / "models"))
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S", stream=sys.stdout)
+    # Fail fast (before the ~10 s model compile) if another engine already owns the port.
+    import socket
+
+    with socket.socket() as probe:
+        if probe.connect_ex(("127.0.0.1", args.port)) == 0:
+            log.info("SlopShield Engine is already running on port %d. Nothing to do; close this window.", args.port)
+            return
     detector = Detector(Path(args.models), args.device)
     try:
         asyncio.run(serve(detector, args.port))

@@ -2,7 +2,7 @@
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwEskle5zVTL0nEkZZIJRnHSD1s0nunUa8r7vdiOBbwcm0+4hYbrK4vcM+4XouHxVTQ+EJyHDXPUsdIVppW/bE3oMC8lxGi9mhiEfjCU6gNvVZR6gwV0Wh8rHYG1NrF8bNq5RDz5gTHZPd6S/jyfqH/YVk40cR6WrvLOHeE+3Vsj6ibd8RObT94IaQO4jauxOu4LAbOXe4g4AlwqSkOn8yRjKUoqkqlPKLCRqCRbtctiVDhJR62ePaa4ZQbrzLbaLVJO+RePvPa/2YKUnCLhHvO7KFQNA1PxLUi+Fq3gSpIp1gixQ42B1Xwwn3hb//UDTRXLsd/znyjYrLKHy2bwZgQIDAQAB",
   "manifest_version": 3,
   "name": "SlopShield",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Flags or blurs likely AI-generated video. All detection runs on your device.",
   "permissions": [
     "activeTab",
