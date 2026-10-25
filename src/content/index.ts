@@ -71,6 +71,19 @@ function note(m: Media, st: VState, text: string, tone: TagTone = 'info') {
   st.tag.set(text, tone);
 }
 
+// Debug tags are placed next to their item, which can be on top of a neighbouring item; one ended
+// up inside a crop the model scored. Hide every tag on the page while any capture is in flight.
+let capturesInFlight = 0;
+
+async function capture(msg: Extract<ContentMsg, { kind: 'CAPTURE_REQ' }>): Promise<CaptureResp | null> {
+  if (capturesInFlight++ === 0) for (const st of media.values()) st.tag?.hide(true);
+  try {
+    return await send<CaptureResp>(msg);
+  } finally {
+    if (--capturesInFlight === 0) for (const st of media.values()) st.tag?.hide(false);
+  }
+}
+
 /**
  * User feedback: store this item's recent crops as an AI / real example (desktop engine → dataset/).
  * "Not AI" on a flagged item also lifts the flag for the rest of this page view.
@@ -109,7 +122,7 @@ async function snapshot(m: Media, st: VState) {
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 80))); // let the page repaint
     for (let attempt = 0; attempt < 8; attempt++) {
       const r = m.getBoundingClientRect();
-      const resp = await send<CaptureResp>({
+      const resp = await capture({
         kind: 'CAPTURE_REQ',
         rect: { x: r.left, y: r.top, width: r.width, height: r.height },
         viewportWidth: innerWidth,
@@ -392,7 +405,7 @@ async function sampleFrames(m: Media, st: VState): Promise<number | null | 'inte
     note(m, st, `frame ${s.length + 1}/${want}${s.length ? ` · avg ${trimmedMean(s).toFixed(2)}` : ''}`);
 
     const r = m.getBoundingClientRect(); // re-read right before capture; the user may have scrolled
-    const resp = await send<CaptureResp>({
+    const resp = await capture({
       kind: 'CAPTURE_REQ',
       rect: { x: r.left, y: r.top, width: r.width, height: r.height },
       viewportWidth: innerWidth,
