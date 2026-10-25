@@ -236,8 +236,7 @@ def save_cache(cache):
 # ---------- scoring ----------
 
 def logits(F, B, head, rule, base_p=fh.AGREE_BASE_P):
-    w, v, b = head
-    h = F @ w + B * v + b
+    h = fh.head_logits(head, F, B)
     if rule == "agree":
         h = np.minimum(h, B + fh.BIAS + fh.agree_shift(base_p))
     return h
@@ -268,6 +267,10 @@ def main():
     ap.add_argument("--base-gate", type=float, default=fh.AGREE_BASE_P,
                     help="agree rule: base model must give at least this (lower = catches more, more false alarms)")
     ap.add_argument("--reexport", action="store_true", help="skip training: re-export the installed head (e.g. new --base-gate)")
+    ap.add_argument("--head", choices=["mlp", "linear"], default="mlp",
+                    help="mlp: small neural net on the features (best on the benchmark); linear: logistic regression")
+    ap.add_argument("--hidden", type=int, default=64, help="mlp hidden units")
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--force", action="store_true", help="install even if the new model doesn't win on the benchmark")
     ap.add_argument("--no-push", action="store_true", help="install locally but don't commit/push to GitHub")
     args = ap.parse_args()
@@ -279,14 +282,14 @@ def main():
 
     vit = fh.load_vit(str(MODELS / "_ref" / "frontier" / "model.safetensors"))
     if args.reexport:
-        h = np.load(MODELS / "head.npz")
+        h, _, _ = fh.load_head(MODELS / "head.npz")
         backup = MODELS / "_ref" / "backups" / time.strftime("%Y%m%d-%H%M%S")
         backup.mkdir(parents=True, exist_ok=True)
         for name in ("model.onnx", "model.json", "head.npz"):
             if (MODELS / name).exists():
                 shutil.copy2(MODELS / name, backup / name)
         say(f"re-exporting installed head with rule={args.rule}, base gate={args.base_gate} (backup: {backup.relative_to(ROOT)})")
-        fh.export(vit, h["w"], float(h["v"]), float(h["b"]), MODELS, {"reexported": time.strftime("%Y-%m-%d %H:%M")},
+        fh.export(vit, h, MODELS, {"reexported": time.strftime("%Y-%m-%d %H:%M")},
                   agree=args.rule == "agree", base_p=args.base_gate)
         say("Done. Rebuild (npm run build), restart the engine, reload the extension.")
         return
@@ -341,15 +344,21 @@ def main():
         Y.append(np.full(len(B), y))
         W.append(np.full(len(B), args.user_weight / max(1, len(B)) * 6))  # each item counts like ~6 crops x weight
     X, Y, W = np.vstack(X), np.concatenate(Y), np.concatenate(W)
-    say(f"[4/6] training head on {len(Y)} crops ({len(tr_items)} of your items, weight x{args.user_weight:g}) ...")
-    clf = LogisticRegression(C=0.5, max_iter=5000, class_weight="balanced").fit(X, Y, sample_weight=W)
-    new_head = (clf.coef_[0][:-1], float(clf.coef_[0][-1]), float(clf.intercept_[0]))
+    say(f"[4/6] training {args.head} head on {len(Y)} crops ({len(tr_items)} of your items, weight x{args.user_weight:g}) ...")
+    if args.head == "mlp":
+        from sklearn.neural_network import MLPClassifier
+
+        idx = np.repeat(np.arange(len(Y)), np.maximum(1, np.round(W).astype(int)))  # sample weights by repetition
+        clf = MLPClassifier(hidden_layer_sizes=(args.hidden,), alpha=1e-3, max_iter=300, early_stopping=True,
+                            random_state=args.seed).fit(X[idx], Y[idx])
+        new_head = {"kind": "mlp", "W1": clf.coefs_[0], "b1": clf.intercepts_[0], "W2": clf.coefs_[1], "b2": clf.intercepts_[1]}
+    else:
+        clf = LogisticRegression(C=0.5, max_iter=5000, class_weight="balanced").fit(X, Y, sample_weight=W)
+        new_head = (clf.coef_[0][:-1], float(clf.coef_[0][-1]), float(clf.intercept_[0]))
 
     old_path = MODELS / "head.npz" if (MODELS / "head.npz").exists() else MODELS / "_ref" / "agree" / "head.npz"
-    o = np.load(old_path)
-    old_head = (o["w"], float(o["v"]), float(o["b"]))
-    old_rule = "agree" if ("agree" not in o or bool(o["agree"])) else "head"
-    old_gate = float(o["base_p"]) if "base_p" in o else 0.2
+    old_head, old_agree, old_gate = fh.load_head(old_path)
+    old_rule = "agree" if old_agree else "head"
 
     # --- scorecard ---
     hold_rows = {k: user_rows[k] for k in hold if k in user_rows}
@@ -396,7 +405,7 @@ def main():
         if (MODELS / name).exists():
             shutil.copy2(MODELS / name, backup / name)
     say(f"[6/6] backed up current model to {backup.relative_to(ROOT)}; exporting new model ...")
-    fh.export(vit, *new_head, MODELS, {"hfClips": len(hf_videos), "yourItems": len(tr_items), "heldOut": len(hold_rows),
+    fh.export(vit, new_head, MODELS, {"hfClips": len(hf_videos), "yourItems": len(tr_items), "heldOut": len(hold_rows),
                                        "userWeight": args.user_weight, "trainedAt": time.strftime("%Y-%m-%d %H:%M")},
               agree=args.rule == "agree", base_p=args.base_gate)
     say(f"Done in {time.time() - t_start:.0f}s. Installed models/model.onnx ({args.rule} rule).")
@@ -426,7 +435,7 @@ def git_push(new_res, old_res, n_train, n_hold, args):
         "Retrained model from labels: wins on benchmark",
         "",
         f"Trained on the public set + {n_train} labelled items (held out: {n_hold}); "
-        f"rule {args.rule}, base gate {args.base_gate:g}, user weight {args.user_weight:g}.",
+        f"{args.head} head, rule {args.rule}, base gate {args.base_gate:g}, user weight {args.user_weight:g}.",
         "",
         "Benchmark (scripts/bench.py, all held-out sets):",
         f"  before: {bench.fmt(old_res)}",

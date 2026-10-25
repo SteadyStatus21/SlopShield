@@ -120,22 +120,49 @@ def agree_shift(base_p: float = AGREE_BASE_P) -> float:
 AGREE_SHIFT = agree_shift()
 
 
-class Detector(torch.nn.Module):
-    """Frozen ViT + new head, combined with the base model by the agreement rule (exported to ONNX)."""
+def head_logits(head, F, B):
+    """Head output (logit) for features F (n,384) and base logits B (n,). head = linear (w, v, b) or MLP dict."""
+    if isinstance(head, dict):  # MLP on [features, base logit]: relu hidden layer, 1 output
+        X = np.hstack([F, np.asarray(B)[:, None]])
+        return (np.maximum(X @ head["W1"] + head["b1"], 0) @ head["W2"] + head["b2"]).ravel()
+    w, v, b = head
+    return F @ w + B * v + b
 
-    def __init__(self, vit, w, v, b, agree=True, base_p=AGREE_BASE_P):
+
+def load_head(path):
+    """(head, agree, base_p) from a head.npz written by export()."""
+    h = np.load(path)
+    agree = "agree" not in h or bool(h["agree"])
+    base_p = float(h["base_p"]) if "base_p" in h else 0.2
+    if "kind" in h and str(h["kind"]) == "mlp":
+        return {"kind": "mlp", "W1": h["W1"], "b1": h["b1"], "W2": h["W2"], "b2": h["b2"]}, agree, base_p
+    return (h["w"], float(h["v"]), float(h["b"])), agree, base_p
+
+
+class Detector(torch.nn.Module):
+    """Frozen ViT + head (linear or small MLP), optionally combined with the base model by the agreement rule."""
+
+    def __init__(self, vit, head, agree=True, base_p=AGREE_BASE_P):
         super().__init__()
         self.vit = vit
         self.agree = agree
         self.shift = agree_shift(base_p)
-        self.w = torch.nn.Parameter(torch.tensor(np.asarray(w).reshape(-1), dtype=torch.float32))
-        self.v = torch.nn.Parameter(torch.tensor(float(v), dtype=torch.float32))
-        self.b = torch.nn.Parameter(torch.tensor(float(b), dtype=torch.float32))
+        self.mlp = isinstance(head, dict)
+        t = lambda a: torch.nn.Parameter(torch.tensor(np.asarray(a), dtype=torch.float32))
+        if self.mlp:
+            self.W1, self.b1, self.W2, self.b2 = t(head["W1"]), t(head["b1"]), t(head["W2"]), t(head["b2"])
+        else:
+            w, v, b = head
+            self.w, self.v, self.b = t(np.asarray(w).reshape(-1)), t(float(v)), t(float(b))
 
     def forward(self, pixel_values):
         f = self.vit.forward_head(self.vit.forward_features(pixel_values), pre_logits=True)
         base = self.vit.head(f)
-        head = f @ self.w[:, None] + base * self.v + self.b
+        if self.mlp:
+            x = torch.cat([f, base], dim=1)
+            head = torch.relu(x @ self.W1 + self.b1) @ self.W2 + self.b2
+        else:
+            head = f @ self.w[:, None] + base * self.v + self.b
         if not self.agree:
             return head
         return torch.minimum(head, base + (BIAS + self.shift))
@@ -151,16 +178,21 @@ def load_vit(weights):
     return vit.eval()
 
 
-def export(vit, w, v, b, out, trained_on, agree=True, base_p=AGREE_BASE_P):
+def export(vit, head, out, trained_on, agree=True, base_p=AGREE_BASE_P):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    np.savez(out / "head.npz", w=np.asarray(w).reshape(-1), v=v, b=b, agree=agree, base_p=base_p)  # lets later runs re-export without retraining
-    torch.onnx.export(Detector(vit, w, v, b, agree, base_p).eval(), (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"),
+    if isinstance(head, dict):
+        np.savez(out / "head.npz", kind="mlp", W1=head["W1"], b1=head["b1"], W2=head["W2"], b2=head["b2"], agree=agree, base_p=base_p)
+    else:
+        w, v, b = head
+        np.savez(out / "head.npz", kind="linear", w=np.asarray(w).reshape(-1), v=v, b=b, agree=agree, base_p=base_p)  # lets later runs re-export without retraining
+    torch.onnx.export(Detector(vit, head, agree, base_p).eval(), (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"),
                       input_names=["pixel_values"], output_names=["logits"],
                       dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
                       opset_version=17, do_constant_folding=True, dynamo=False)
     meta = {"name": f"{REPO} + SlopShield social-video head (agreement rule)", "size": SIZE, "resizeShortest": SHORT,
             "mean": MEAN, "std": STD, "aiIndex": 0, "labels": ["ai (sigmoid)"], "inputName": "pixel_values",
+            "head": "mlp" if isinstance(head, dict) else "linear",
             "rule": (f"min(head, base{BIAS:+.3f}{agree_shift(base_p):+.3f}): head>={AGREE_HEAD_P} AND base>={base_p}"
                      if agree else "head only"),
             "trainedOn": trained_on}
@@ -192,7 +224,7 @@ def main():
 
     if args.reexport_from:
         w, v, b = head_from_onnx(args.reexport_from)
-        export(load_vit(args.weights), w, v, b, args.out, {"reexportedFrom": str(args.reexport_from)})
+        export(load_vit(args.weights), (w, v, b), args.out, {"reexportedFrom": str(args.reexport_from)})
         return
 
     excluded = {p.stem for d in args.exclude for p in Path(d).rglob("*.mp4")}
@@ -249,7 +281,7 @@ def main():
     clf.fit(X, y)
 
     n_ai = int(sum(label_of.values()))
-    export(vit, clf.coef_[0][:-1], clf.coef_[0][-1], clf.intercept_[0], args.out,
+    export(vit, (clf.coef_[0][:-1], clf.coef_[0][-1], clf.intercept_[0]), args.out,
            {"aiVideos": n_ai, "realVideos": len(label_of) - n_ai})
 
 if __name__ == "__main__":

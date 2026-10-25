@@ -100,11 +100,7 @@ def trimmed_mean(xs, frac=0.25):
 
 def frame_logit(F, B, head, rule, gate):
     """Mean tile logit for one frame under a head + rule. `head` = (w, v, b) or a callable F,B -> logits."""
-    if callable(head):
-        z = head(F, B)
-    else:
-        w, v, b = head
-        z = F @ w + B * v + b
+    z = head(F, B) if callable(head) else fh.head_logits(head, F, B)
     if rule == "agree":
         z = np.minimum(z, B + fh.BIAS + fh.agree_shift(gate))
     elif rule == "base":
@@ -157,10 +153,8 @@ def objective(res, fp_weight=4.0):
 
 
 def load_head(path):
-    h = np.load(path)
-    rule = "agree" if ("agree" not in h or bool(h["agree"])) else "head"
-    gate = float(h["base_p"]) if "base_p" in h else 0.2
-    return (h["w"], float(h["v"]), float(h["b"])), rule, gate
+    head, agree, gate = fh.load_head(path)
+    return head, ("agree" if agree else "head"), gate
 
 
 def main():
