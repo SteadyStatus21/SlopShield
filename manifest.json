@@ -41,7 +41,8 @@
     {
       "resources": [
         "ort/*",
-        "models/*"
+        "models/*",
+        "fonts/*"
       ],
       "matches": [
         "<all_urls>"

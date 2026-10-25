@@ -1,14 +1,27 @@
+/* In-page overlays, styled after steadystatus21.com: warm charcoal, off-white, hairlines, square
+   corners, IBM Plex (registered by fonts.ts), and the site's red as the warning accent. */
 :host { all: initial; }
-* { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-
+* { box-sizing: border-box; font-family: "SlopShield Plex Sans", "IBM Plex Sans", system-ui, sans-serif; }
 .frame {
+  --bg: rgba(17, 18, 16, 0.94);
+  --solid: #111210;
+  --fg: #eeefe9;
+  --muted: #b6b8b0;
+  --muted2: #85887f;
+  --stroke: #30322d;
+  --strokeStrong: #55584f;
+  --red: #f23f43;
+  --green: #5fbf7f;
+  --amber: #d9a441;
+  --mono: "SlopShield Plex Mono", "IBM Plex Mono", ui-monospace, monospace;
   position: fixed;
   pointer-events: none;
   z-index: 2147483646;
 }
+.eyebrow { font: 500 11px/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--red); }
 
 /* Warn mode: red outline around the item plus a full-width banner across its top. */
-.frame.flagged { box-shadow: inset 0 0 0 5px #dc2626; border-radius: 4px; }
+.frame.flagged { box-shadow: inset 0 0 0 3px var(--red); }
 .badge {
   position: absolute;
   top: 0;
@@ -16,39 +29,39 @@
   right: 0;
   pointer-events: auto;
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  background: #dc2626;
-  color: #fff;
-  padding: 10px 14px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg);
+  color: var(--fg);
+  border-left: 3px solid var(--red);
+  border-bottom: 1px solid var(--red);
+  padding: 10px 14px 11px;
   cursor: default;
 }
-.badge .btitle { font-size: 20px; font-weight: 800; line-height: 1.15; }
-.badge .bsub { font-size: 14px; font-weight: 500; opacity: 0.9; }
-.small .badge { padding: 6px 8px; }
-.small .badge .btitle { font-size: 14px; }
-.small .badge .bsub { display: none; }
+.badge .btitle { font-size: 21px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.15; }
+.badge .bsub { font: 400 11px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted2); }
+.small .badge { padding: 6px 9px; }
+.small .badge .btitle { font-size: 15px; }
+.small .badge .bsub, .small .badge .eyebrow { display: none; }
 .badge .tip {
   display: none;
   position: absolute;
-  top: 100%; /* no gap: the pointer can move from badge into the tooltip's buttons */
-  left: 0;
+  top: 100%; /* no gap: the pointer can move from the banner into the tooltip's buttons */
+  left: -3px;
   width: max-content;
-  max-width: 300px;
-  background: #111827;
-  color: #f9fafb;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.4;
-  padding: 10px 12px;
-  border-radius: 0 0 8px 8px;
+  max-width: 340px;
+  background: var(--solid);
+  color: var(--muted);
+  border: 1px solid var(--stroke);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 12px 14px;
   white-space: normal;
 }
 .badge:hover .tip { display: block; }
-.tip ul { margin: 4px 0 0; padding-left: 16px; }
+.tip ul { margin: 6px 0 0; padding-left: 16px; color: var(--fg); }
 
+/* Block mode: an opaque panel over the (blurred, paused) item. */
 .block {
   position: absolute;
   inset: 0;
@@ -56,66 +69,77 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Nearly opaque: the blocked content underneath should not be readable. */
-  background: rgba(17, 24, 39, 0.94);
-  border: 5px solid #dc2626;
-  color: #fff;
-  text-align: center;
-  padding: 16px;
+  background: rgba(17, 18, 16, 0.97);
+  border: 3px solid var(--red);
+  color: var(--fg);
+  padding: 20px;
   overflow: hidden;
 }
-.panel { max-width: 420px; }
-.panel h2 { margin: 0 0 8px; font-size: 22px; font-weight: 800; line-height: 1.25; }
-.panel p { margin: 0 0 14px; font-size: 15px; line-height: 1.4; opacity: 0.9; }
-.panel .actions { display: flex; justify-content: center; }
-.panel .fb { margin-top: 12px; }
+.panel { max-width: 420px; text-align: left; }
+.panel .eyebrow { border-left: 2px solid var(--red); padding-left: 9px; }
+.panel h2 { margin: 12px 0 8px; font-size: 26px; font-weight: 500; letter-spacing: -0.04em; line-height: 1.15; }
+.panel p { margin: 0 0 18px; font-size: 15px; line-height: 1.5; color: var(--muted); }
+.panel .actions { display: flex; }
 .panel button.reveal {
-  font-size: 15px;
-  padding: 9px 18px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  font: 500 12px/1 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 11px 16px;
+  border: 1px solid var(--strokeStrong);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--fg);
   cursor: pointer;
 }
-.panel button.reveal:hover { background: rgba(255, 255, 255, 0.25); }
-.panel button.reveal.confirm { background: #dc2626; border-color: #dc2626; font-weight: 700; }
-.small .panel h2 { font-size: 15px; }
+.panel button.reveal:hover { background: #20211e; }
+.panel button.reveal.confirm { border-color: var(--red); color: var(--red); }
+.small .panel h2 { font-size: 17px; margin-top: 6px; }
 .small .panel p, .small .fbmsg { display: none; }
 
+/* "Is this right? [Yes, AI] [Not AI]" feedback (banner tooltip + block panel) */
+.fb { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--stroke); }
+.fbmsg { font: 500 11px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted2); margin-right: 4px; }
+.fb .fbbtn { font: 500 11px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 7px 10px; border-radius: 2px;
+  border: 1px solid var(--stroke); background: transparent; color: var(--fg); cursor: pointer; }
+.fb .fbbtn:hover { background: #20211e; }
+.fbbtn.ai { border-color: var(--red); color: var(--red); }
+.fbbtn.real { border-color: var(--green); color: var(--green); }
+.fbbtn:disabled { opacity: 0.4; cursor: default; }
+
+/* Debug tag: status next to each scanned item, colored left rule by tone. */
 .dbg {
+  --solid: #111210;
+  --fg: #eeefe9;
+  --muted: #b6b8b0;
+  --stroke: #30322d;
+  --red: #f23f43;
+  --green: #5fbf7f;
+  --amber: #d9a441;
+  --mono: "SlopShield Plex Mono", "IBM Plex Mono", ui-monospace, monospace;
   position: fixed;
   z-index: 2147483647;
   pointer-events: none;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.3;
-  padding: 3px 7px;
-  border-radius: 6px;
-  color: #fff;
-  background: #374151;
+  font: 500 11px/1.3 var(--mono);
+  letter-spacing: 0.02em;
+  padding: 4px 6px 4px 8px;
+  color: var(--muted);
+  background: rgba(17, 18, 16, 0.94);
+  border: 1px solid var(--stroke);
+  border-left: 2px solid var(--muted);
   white-space: nowrap;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 /* Status text shrinks with an ellipsis; the label buttons always stay fully visible. */
-.dbg .dbgtext { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
-.dbg.real { background: #15803d; }
-.dbg.ai { background: #b91c1c; }
-.dbg.skip { background: #a16207; }
-
-/* "Is this right? [Yes, AI] [Not AI]" feedback (badge tooltip + block panel) */
-.fb { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-top: 10px; }
-.fbmsg { font-size: 12px; opacity: 0.9; }
-.fb .fbbtn, .panel .fb .fbbtn { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.12); color: #fff; cursor: pointer; }
-.fbbtn.real { background: #15803d; border-color: #15803d; }
-.fbbtn.ai { background: #b91c1c; border-color: #b91c1c; }
-.fbbtn:disabled { opacity: 0.5; cursor: default; }
+.dbg .dbgtext { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+.dbg.real { color: var(--green); border-left-color: var(--green); }
+.dbg.ai { color: var(--red); border-left-color: var(--red); }
+.dbg.skip { color: var(--amber); border-left-color: var(--amber); }
 
 /* debug tag label buttons (the tag itself stays click-through) */
-.dbgbtn { pointer-events: auto; flex: none; font-size: 12px; font-weight: 700; padding: 3px 10px;
-  border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.8); background: rgba(0, 0, 0, 0.3); color: #fff; cursor: pointer; }
-.dbgbtn:hover { background: rgba(255, 255, 255, 0.25); }
+.dbgbtn { pointer-events: auto; flex: none; font: 500 11px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 8px;
+  border-radius: 2px; border: 1px solid var(--stroke); background: transparent; color: var(--fg); cursor: pointer; }
+.dbgbtn:hover { background: #20211e; }
+.dbgbtn.ai { border-color: var(--red); }
+.dbgbtn.real { border-color: var(--green); }

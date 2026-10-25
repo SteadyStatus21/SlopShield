@@ -15,6 +15,14 @@ function copyStatic() {
   cpSync('src/popup/popup.css', `${out}/popup/popup.css`);
   cpSync('src/welcome/welcome.html', `${out}/welcome/welcome.html`);
   cpSync('src/welcome/welcome.css', `${out}/welcome/welcome.css`);
+  cpSync('src/theme.css', `${out}/theme.css`);
+
+  // IBM Plex (OFL-1.1), bundled so pages and overlays work offline.
+  mkdirSync(`${out}/fonts`, { recursive: true });
+  cpSync('node_modules/@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2', `${out}/fonts/plex-sans.woff2`);
+  for (const w of [400, 500]) {
+    cpSync(`node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-${w}-normal.woff2`, `${out}/fonts/plex-mono-${w}.woff2`);
+  }
   if (existsSync('icons')) cpSync('icons', `${out}/icons`, { recursive: true });
 
   // ORT loads its .wasm (and JSEP glue .mjs) at runtime from env.wasm.wasmPaths.

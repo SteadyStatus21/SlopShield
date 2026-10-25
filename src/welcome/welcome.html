@@ -4,50 +4,50 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Welcome to SlopShield</title>
+    <link rel="stylesheet" href="../theme.css" />
     <link rel="stylesheet" href="welcome.css" />
   </head>
   <body>
+    <div class="topbar"><span class="brand">SlopShield</span><span class="eyebrow">Setup</span></div>
     <main>
       <header>
-        <div class="logo">🛡️</div>
-        <div>
-          <h1>Welcome to SlopShield</h1>
-          <p class="lead">SlopShield warns you about AI-generated videos and pictures while you scroll Facebook, Instagram, X, YouTube and other sites. Everything is checked on this computer; nothing you watch is sent anywhere.</p>
-        </div>
+        <div class="eyebrow">On-device · AI detection · Privacy</div>
+        <h1>Welcome to SlopShield</h1>
+        <p class="lead">SlopShield warns you about AI-generated videos and pictures while you scroll Facebook, Instagram, X, YouTube and other sites. Everything is checked on this computer; nothing you watch is sent anywhere.</p>
       </header>
 
       <ol class="steps">
         <li id="step1" class="step current">
-          <div class="num">1</div>
+          <div class="num">01</div>
           <div class="body">
-            <h2>Install the SlopShield helper <span class="tag">recommended</span></h2>
+            <h2>Install the SlopShield helper <span class="tag">Recommended</span></h2>
             <p>The helper is a small app that uses your computer's graphics chip to check videos about 3× faster, with less lag and battery use. Without it, SlopShield still works inside the browser, just more slowly.</p>
-            <a class="btn primary" id="download" href="https://github.com/SteadyStatus21/SlopShield/archive/refs/heads/main.zip">⬇ Download the helper (Windows)</a>
+            <a class="btn primary" id="download" href="https://github.com/SteadyStatus21/SlopShield/archive/refs/heads/main.zip">Download the helper (Windows) ↓</a>
             <ol class="howto">
               <li>Open the downloaded ZIP file and choose <b>Extract all</b>.</li>
-              <li>In the extracted folder, open <b>engine</b> and double-click <b>setup_engine.bat</b>. The first run installs everything it needs (about 2 minutes). If it asks for Python, install it from <a href="https://www.python.org/downloads/" target="_blank" rel="noopener">python.org</a> with <b>"Add python.exe to PATH"</b> ticked, then run it again.</li>
-              <li>Leave the black helper window open while you browse. Next time, double-click <b>start_engine.bat</b>.</li>
+              <li>In the extracted folder, open <b>engine</b> and double-click <b>setup_engine.bat</b>. The first run installs everything it needs (about 2 minutes). If it asks for Python, install it from <a href="https://www.python.org/downloads/" target="_blank" rel="noopener">python.org ↗</a> with <b>"Add python.exe to PATH"</b> ticked, then run it again.</li>
+              <li>Leave the helper window open while you browse. Next time, double-click <b>start_engine.bat</b>.</li>
             </ol>
-            <div class="status" id="engineStatus"><span class="dot"></span><span id="engineText">Waiting for the helper…</span></div>
+            <div class="flag wait" id="engineStatus"><span id="engineText">Waiting for the helper…</span></div>
             <div class="row">
-              <button class="btn" id="next1" disabled>Continue</button>
+              <button class="btn" id="next1" disabled>Continue →</button>
               <button class="link" id="skip1">Skip for now, use the slower in-browser mode</button>
             </div>
           </div>
         </li>
 
         <li id="step2" class="step">
-          <div class="num">2</div>
+          <div class="num">02</div>
           <div class="body">
             <h2>What should SlopShield do with likely-AI content?</h2>
             <div class="choices">
               <button class="choice" data-mode="flag">
-                <span class="icon">⚠️</span>
+                <span class="eyebrow">Option A</span>
                 <span class="ctitle">Warn me</span>
-                <span class="cdesc">Show a big red warning on the video or picture. You can still watch it.</span>
+                <span class="cdesc">Show a clear warning banner on the video or picture. You can still watch it.</span>
               </button>
               <button class="choice" data-mode="block">
-                <span class="icon">🛑</span>
+                <span class="eyebrow">Option B</span>
                 <span class="ctitle">Block it</span>
                 <span class="cdesc">Hide it behind a warning and pause it. You decide whether to show it. Good for family members.</span>
               </button>
@@ -56,19 +56,19 @@
         </li>
 
         <li id="step3" class="step">
-          <div class="num">3</div>
+          <div class="num">03</div>
           <div class="body">
             <h2>You're all set</h2>
             <ul class="tips">
-              <li>Pin SlopShield: click the puzzle piece 🧩 at the top right of the browser, then the pin next to SlopShield. Its button lets you change these choices any time.</li>
+              <li>Pin SlopShield: click the puzzle piece at the top right of the browser, then the pin next to SlopShield. Its button lets you change these choices any time.</li>
               <li>Detection can be wrong. A warning means "be careful", not proof. Never send money or personal details because of a video.</li>
               <li>Real platform labels like "AI info" or "Made with AI" are always trusted.</li>
             </ul>
-            <button class="btn primary" id="finish">Start browsing</button>
+            <button class="btn primary" id="finish">Start browsing →</button>
           </div>
         </li>
       </ol>
-      <footer>All analysis stays on this device. <span id="version"></span></footer>
+      <footer><span class="eyebrow">All analysis stays on this device</span><span class="eyebrow" id="version"></span></footer>
     </main>
     <script src="welcome.js"></script>
   </body>

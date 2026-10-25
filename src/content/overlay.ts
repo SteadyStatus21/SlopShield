@@ -1,5 +1,6 @@
 // Blur + badge + "Show anyway", plus "Yes, AI" / "Not AI" feedback that becomes training data.
 import css from './overlay.css';
+import { loadFonts } from './fonts';
 import { isOccluded } from './occlusion';
 import type { Label, Verdict } from '../types';
 
@@ -28,6 +29,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 function mount(media: HTMLElement) {
+  loadFonts();
   const host = document.createElement('slopshield-overlay');
   const root = host.attachShadow({ mode: 'closed' });
   const style = el('style');
@@ -85,7 +87,11 @@ export function showBadge({ media, verdict, onLabel, onReveal }: Opts): Overlay 
   // Hard to miss: a red outline around the item and a full-width banner across its top.
   frame.classList.add('flagged');
   const badge = el('div', 'badge');
-  badge.append(el('span', 'btitle', '⚠ Likely AI-generated'), el('span', 'bsub', `${pct(verdict)} · hover for why`));
+  badge.append(
+    el('span', 'eyebrow', `SlopShield · ${pct(verdict)}`),
+    el('span', 'btitle', 'Likely AI-generated'),
+    el('span', 'bsub', 'Hover for why'),
+  );
   const tip = el('div', 'tip', 'Why SlopShield flagged this:');
   const ul = el('ul');
   for (const r of verdict.reasons) ul.append(el('li', undefined, r));
@@ -151,8 +157,9 @@ export function showBlock({ media, verdict, onReveal, onLabel, stacked = [] }: O
   const block = el('div', 'block');
   const panel = el('div', 'panel');
   // Title, one line of context, one row of actions. Full reasons on hover (title).
-  const title = el('h2', undefined, `🛑 Blocked: likely AI-generated ${video ? 'video' : 'image'}`);
-  const sub = el('p', undefined, `SlopShield score ${pct(verdict)}. It can be wrong, but be careful: never send money or personal details because of a video.`);
+  const eyebrow = el('div', 'eyebrow', `Blocked · SlopShield ${pct(verdict)}`);
+  const title = el('h2', undefined, `Likely AI-generated ${video ? 'video' : 'image'}`);
+  const sub = el('p', undefined, 'It can be wrong, but be careful: never send money or personal details because of a video.');
   panel.title = verdict.reasons.join(' · ');
   // Revealing takes two deliberate clicks; the second button only appears after the first.
   const reveal = el('button', 'reveal', 'Show anyway');
@@ -168,7 +175,7 @@ export function showBlock({ media, verdict, onReveal, onLabel, stacked = [] }: O
   });
   const actions = el('div', 'actions');
   actions.append(reveal);
-  panel.append(title, sub, actions);
+  panel.append(eyebrow, title, sub, actions);
   // "Not AI" saves it as a real example and reveals it right away.
   if (onLabel) panel.append(feedback(onLabel, (label) => label === 'real' && setTimeout(done, 600)));
   // Clicks on the overlay must not reach the player underneath.
@@ -206,6 +213,7 @@ export interface DebugTag {
  * crops the model scores.
  */
 export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
+  loadFonts();
   const host = document.createElement('slopshield-debug');
   const root = host.attachShadow({ mode: 'closed' });
   const style = el('style');
@@ -219,11 +227,11 @@ export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
       const b = el('button', `dbgbtn ${label}`, t);
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
-        text.textContent = '🛡 saving…';
+        text.textContent = 'saving…';
         try {
-          text.textContent = `🛡 ${await onLabel(label)}`;
+          text.textContent = await onLabel(label);
         } catch (err) {
-          text.textContent = `🛡 ${String((err as Error).message ?? err)}`;
+          text.textContent = String((err as Error).message ?? err);
         }
       });
       return b;
@@ -248,7 +256,7 @@ export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
   };
   return {
     set(t, tone) {
-      text.textContent = `🛡 ${t}`;
+      text.textContent = t;
       text.title = t; // full text on hover when it's cut off
       tag.className = `dbg ${tone}`;
       update();

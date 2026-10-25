@@ -28,7 +28,7 @@ function checkEngine() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(String(ev.data));
     engineOk = true;
-    $('engineStatus').classList.add('ok');
+    $('engineStatus').className = 'flag ok';
     $('engineText').textContent = `Helper connected${msg.device ? ` (${String(msg.device).replace(/ \(.*\)$/, '')})` : ''}`;
     $<HTMLButtonElement>('next1').disabled = false;
     ws.close();

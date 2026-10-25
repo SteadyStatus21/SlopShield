@@ -31,7 +31,7 @@ async function refresh() {
     : st.backend.backend === 'engine'
       ? 'desktop engine'
       : `in-browser: ${st.backend.backend}`;
-  be.className = `pill ${st.backend.modelLoaded ? 'ok' : st.backend.error ? 'bad' : ''}`;
+  be.className = `flag ${st.backend.modelLoaded ? 'ok' : st.backend.error ? 'bad' : ''}`;
   be.title = st.backend.error ?? st.backend.device ?? '';
   const crops = $('crops');
   crops.hidden = !(s.debug && st.lastCrops.length);
@@ -82,7 +82,7 @@ function checkEngine() {
   }
   const done = (text: string, cls: string, title = '') => {
     pill.textContent = text;
-    pill.className = `pill ${cls}`;
+    pill.className = `flag ${cls}`;
     pill.title = title;
     ws.close();
   };

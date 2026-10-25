@@ -2,44 +2,50 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <link rel="stylesheet" href="../theme.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header>
-      <h1>🛡️ SlopShield</h1>
-      <span id="backend" class="pill">model: …</span>
+      <div class="eyebrow">On-device · AI detection</div>
+      <div class="title">
+        <h1>SlopShield</h1>
+        <span id="backend" class="flag">model: …</span>
+      </div>
     </header>
 
     <section>
-      <div class="label">Mode</div>
+      <div class="eyebrow num">01 · Mode</div>
       <div class="seg" id="mode">
         <button data-mode="off">Off</button>
-        <button data-mode="flag">Flag</button>
+        <button data-mode="flag">Warn</button>
         <button data-mode="block">Block</button>
       </div>
     </section>
 
     <section>
-      <label class="row"><input type="checkbox" id="fast" /> Fast mode <span class="hint">(text &amp; labels only, no vision)</span></label>
-      <label class="row"><input type="checkbox" id="gpu" /> Use GPU <span class="hint">(recommended, ~10× faster; turn off if the browser stutters)</span></label>
-      <div class="label">Sensitivity threshold: <b id="thVal"></b></div>
+      <div class="eyebrow num">02 · Detection</div>
+      <label class="row"><input type="checkbox" id="fast" /> <span>Fast mode <span class="hint">labels &amp; text only, no vision</span></span></label>
+      <label class="row"><input type="checkbox" id="gpu" /> <span>Use GPU <span class="hint">turn off if the browser stutters</span></span></label>
+      <div class="thresh"><span>Sensitivity</span><b id="thVal"></b></div>
       <input type="range" id="threshold" min="0.3" max="0.95" step="0.05" />
-      <div class="hint">Lower = flags more.</div>
+      <div class="hint">Lower flags more.</div>
     </section>
 
     <section>
-      <div class="row"><button id="flush">Clear cached verdicts</button> <span id="flushMsg" class="hint"></span></div>
+      <div class="eyebrow num">03 · Cache</div>
+      <div class="row"><button class="btn" id="flush">Clear cached verdicts</button> <span id="flushMsg" class="hint"></span></div>
       <div class="hint">Only confident verdicts are kept between page loads. Clearing re-checks what's on screen.</div>
     </section>
 
     <section>
-      <label class="row"><input type="checkbox" id="debug" /> Debug: show what the model saw</label>
+      <label class="row"><input type="checkbox" id="debug" /> <span>Debug: show what the model saw</span></label>
       <div id="crops" hidden></div>
     </section>
 
     <footer>
-      <div class="row"><span id="engine" class="pill">Desktop engine: checking…</span></div>
-      <span class="hint">All analysis stays on this device. <a href="#" id="setup">Setup guide</a> · <span id="version"></span></span>
+      <span id="engine" class="flag">Desktop engine: checking…</span>
+      <span class="hint">All analysis stays on this device · <a href="#" id="setup">Setup guide</a> · <span id="version"></span></span>
     </footer>
     <script src="popup.js"></script>
   </body>
