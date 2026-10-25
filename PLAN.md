@@ -28,6 +28,24 @@ Example: "Talking To Brick Wall — Maronzio Vance (2010)" on X blocked at **0.9
 4. **Pick the operating point for low false positives.** Choose threshold / agreement levels (`AGREE_HEAD_P`, `AGREE_BASE_P`) so held-out real FP ≤ ~2%, and report the recall we get there.
 5. **Safer UX for uncertain verdicts.** Vision-only verdicts below a high bar (e.g. < 0.9) get the Flag badge, not a full Block; Block reserved for very confident or platform-labelled media. Show the score/reasons in the block panel (currently hidden in the small layout).
 
+## Improvement loop (started Oct 24, 23:30)
+
+Benchmark: `python scripts/bench.py` scores a head on every held-out set exactly like the extension
+(user hold-out ~1 in 5 labels, 120 modern AI/real videos, 80 stills, 30 game screenshots).
+
+| Step | AI caught (all sets) | Real flagged (all sets) |
+|---|---|---|
+| Baseline: installed head, agree gate 0.05 | 77/114 | 7/140 |
+| Head/gate hyper-parameter sweep (same data) | 76–79/114 | 5–7/140 (plateau) |
+
+Findings → fixes so far:
+- Held-out false positives included carousel photos with big black padding and a meme crop with our
+  own debug tag inside it → trim flat borders before tiling; hide tags during every capture.
+- Training data expanded (`scripts/fetch_training_data.py`): 623 AI / 676 real clips (was 238/240),
+  modern AI stills, real photos, game screenshots, generated text cards / UI screenshots.
+- Next: re-bench on border-trimmed features with the expanded data; then head types (logistic vs
+  small MLP), aggregation; deeper fine-tuning if the frozen-feature head plateaus.
+
 ## Priority 2 — catch more AI video (after FP is under control)
 
 - 4/7 of the user's in-the-wild clips are still missed: add more modern generator data (Seedance, Wan, Hailuo, Veo 3.1, Sora 2) to the training mix, with heavy repost/compression augmentation.
