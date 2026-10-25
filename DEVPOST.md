@@ -58,11 +58,11 @@ On our own in-the-wild feed (held-out labels) it still misses about half of the 
 
 ## What we learned
 
-Per-frame image detectors can't see motion glitches (a spoon teleporting into a pan), they're easily fooled by graphics, text cards and phone beauty filters, and accuracy numbers mean nothing unless you test on the content your users actually see. Measuring on our own feed changed almost every design decision.
+Per-frame image detectors can't see motion glitches (a spoon teleporting into a pan), they're easily fooled by graphics, text cards and phone beauty filters, and accuracy numbers mean nothing unless you test on the content your users actually see. Measuring on our own feed changed almost every design decision. For example, we got a 20x larger Gemma-based detector (Smaug, 439M params) running on the Iris Xe through OpenVINO as a "second opinion". It looked great on public benchmarks, but on our own labelled feed it ranked AI vs. real worse than a coin flip (AUC 0.45 vs. 0.69 for ours), so it didn't ship.
 
 ## What's next
 
 - Temporal (multi-frame) detection to catch motion artifacts.
-- A second opinion from a larger detector (we already run the Gemma-based Smaug detector on the Iris Xe via OpenVINO) for borderline calls.
+- More in-the-wild training data: ordinary phone-style AI clips (Sora 2 app reposts) are the hardest case, and the one-click labelling loop is how we collect them.
 - Parent mode (PIN-protected), per-site allowlists, and warnings for remote-access / tech-support scam pages.
 - A mobile version.
