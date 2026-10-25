@@ -1,6 +1,7 @@
 node_modules/
 dist/
 models/*.onnx
+!models/model.onnx
 models/_export/
 demo/videos/*.mp4
 eval_frames/
