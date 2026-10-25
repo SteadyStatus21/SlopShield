@@ -68,7 +68,21 @@ async function infer(images: string[], gpu: boolean): Promise<number[]> {
 interface Pending {
   windowId: number;
   req: CropReq;
+  key?: string; // media key, so its crops can be kept for labeling
   resolve: (r: CaptureResp) => void;
+}
+
+// Labeling: the most recent clean crops per media key (captured before any overlay was drawn), so a
+// "Not AI" / "Yes, AI" click can send exactly what the model saw to the engine's dataset folders.
+const recentCrops = new Map<string, string[]>();
+const KEEP_KEYS = 40;
+const KEEP_TILES_PER_KEY = 18;
+
+function rememberCrops(key: string, urls: string[]) {
+  const tiles = [...(recentCrops.get(key) ?? []), ...urls].slice(-KEEP_TILES_PER_KEY);
+  recentCrops.delete(key); // re-insert so this key becomes the newest
+  recentCrops.set(key, tiles);
+  while (recentCrops.size > KEEP_KEYS) recentCrops.delete(recentCrops.keys().next().value!);
 }
 
 const queue: Pending[] = [];
@@ -96,10 +110,10 @@ function currentBackoff(): number {
   return backoff;
 }
 
-function enqueue(windowId: number, req: CropReq): Promise<CaptureResp> {
+function enqueue(windowId: number, req: CropReq, key?: string): Promise<CaptureResp> {
   if (queue.length >= VISION.maxQueue) return Promise.resolve({ ok: false, reason: 'busy' });
   return new Promise((resolve) => {
-    queue.push({ windowId, req, resolve });
+    queue.push({ windowId, req, key, resolve });
     schedule();
   });
 }
@@ -133,6 +147,7 @@ async function flush() {
     const owner: number[] = [];
     crops.forEach((c, i) => {
       if (!c.ok) return batch[i].resolve({ ok: false, reason: c.reason });
+      if (batch[i].key) rememberCrops(batch[i].key!, c.dataUrls);
       for (const url of c.dataUrls) {
         tilesFlat.push(url);
         owner.push(i);
@@ -188,7 +203,7 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
       case 'CAPTURE_REQ': {
         const tab = sender.tab;
         if (!tab?.windowId || !tab.active) return { ok: false, reason: 'offscreen' } satisfies CaptureResp;
-        return enqueue(tab.windowId, { rect: msg.rect, viewportWidth: msg.viewportWidth, viewportHeight: msg.viewportHeight });
+        return enqueue(tab.windowId, { rect: msg.rect, viewportWidth: msg.viewportWidth, viewportHeight: msg.viewportHeight }, msg.key);
       }
       case 'CACHE_GET': {
         const k = await cacheKey(msg.key);
@@ -197,6 +212,13 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
       case 'JANK':
         onJank();
         return true;
+      case 'LABEL': {
+        const images = recentCrops.get(msg.key);
+        if (!images?.length) return { ok: false, error: 'no recent frames for this item (scroll it back into view to rescan)' };
+        await ensureOffscreen();
+        const fwd: OffscreenMsg = { target: 'offscreen', kind: 'LABEL', label: msg.label, key: msg.key, page: sender.tab?.url ?? '', images };
+        return chrome.runtime.sendMessage(fwd);
+      }
       case 'CACHE_SET':
         await chrome.storage.session.set({ [await cacheKey(msg.key)]: msg.verdict });
         return true;

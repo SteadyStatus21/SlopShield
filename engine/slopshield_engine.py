@@ -88,6 +88,36 @@ def save_crops(folder: Path, images: list[str], scores: list[float], keep: int =
         old.unlink()
 
 
+DATASET = ROOT / "dataset"
+
+
+def save_label(label: str, key: str, page: str, images: list[str]) -> tuple[int, str]:
+    """User feedback from the extension: store the item's crops under dataset/<label>/<site>_<id>/.
+
+    Re-labelling the same item moves it (a correction must not leave a contradictory copy behind).
+    """
+    import hashlib
+    import shutil
+    from urllib.parse import urlparse
+
+    if label not in ("ai", "real"):
+        raise ValueError(f"bad label {label!r}")
+    item = hashlib.sha1(key.encode()).hexdigest()[:12]
+    site = (urlparse(page).hostname or "page").removeprefix("www.").split(".")[0]
+    name = f"{site}_{item}"
+    for other in ("ai", "real"):
+        if other != label and (DATASET / other / name).exists():
+            shutil.rmtree(DATASET / other / name)
+    folder = DATASET / label / name
+    folder.mkdir(parents=True, exist_ok=True)
+    start = len(list(folder.glob("tile*.png")))
+    for i, url in enumerate(images):
+        (folder / f"tile{start + i:03d}.png").write_bytes(base64.b64decode(url.split(",", 1)[1]))
+    (folder / "meta.json").write_text(json.dumps({"label": label, "key": key, "site": urlparse(page).hostname,
+                                                  "labeledAt": time.strftime("%Y-%m-%d %H:%M:%S")}, indent=2))
+    return len(images), f"dataset/{label}/{name}"
+
+
 async def serve(detector: Detector, port: int, crops_dir: Path | None = None):
     lock = asyncio.Lock()  # one inference at a time; the extension already budgets requests
 
@@ -104,6 +134,14 @@ async def serve(detector: Detector, port: int, crops_dir: Path | None = None):
                 if msg.get("type") == "hello":
                     await ws.send(json.dumps({"type": "hello", "version": VERSION, "device": detector.device,
                                               "model": detector.meta.get("name")}))
+                elif msg.get("type") == "label":
+                    try:
+                        saved, folder = save_label(msg["label"], msg["key"], msg.get("page", ""), msg["images"])
+                        log.info("labelled %s: %d crop(s) -> %s", msg["label"].upper(), saved, folder)
+                        await ws.send(json.dumps({"type": "labeled", "id": msg.get("id"), "saved": saved, "folder": folder}))
+                    except Exception as e:
+                        log.exception("saving label failed")
+                        await ws.send(json.dumps({"type": "error", "id": msg.get("id"), "error": str(e)}))
                 elif msg.get("type") == "score":
                     t0 = time.perf_counter()
                     async with lock:

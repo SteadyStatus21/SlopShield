@@ -2,7 +2,7 @@
 import * as ort from 'onnxruntime-web/webgpu';
 import { ENGINE, MODEL, OFFSCREEN_IDLE_MS } from '../config';
 import { log, warn } from '../log';
-import type { BackendInfo, InferResp, ModelMeta, OffscreenMsg } from '../types';
+import type { BackendInfo, InferResp, LabelResp, ModelMeta, OffscreenMsg } from '../types';
 
 ort.env.wasm.wasmPaths = chrome.runtime.getURL('ort/');
 // Offscreen docs aren't cross-origin isolated, so no SharedArrayBuffer threads.
@@ -102,7 +102,8 @@ function pAI(logits: Float32Array, aiIndex: number, logitBias = 0): number {
 let engine: WebSocket | null = null;
 let engineDevice: string | null = null; // set once the engine has said hello
 let lastEngineAttempt = 0;
-const pending = new Map<number, (r: { scores?: number[]; error?: string }) => void>();
+// Replies from the engine, by request id (raw message: {type: 'scores' | 'labeled' | 'error', ...}).
+const pending = new Map<number, (reply: any) => void>();
 let nextId = 1;
 
 function connectEngine() {
@@ -122,7 +123,7 @@ function connectEngine() {
       engineDevice = msg.device;
       log('desktop engine connected:', msg.device, msg.model);
     } else if (pending.has(msg.id)) {
-      pending.get(msg.id)!(msg.type === 'scores' ? { scores: msg.scores } : { error: msg.error ?? 'engine error' });
+      pending.get(msg.id)!(msg);
       pending.delete(msg.id);
     }
   };
@@ -130,26 +131,32 @@ function connectEngine() {
     if (engineDevice) log('desktop engine disconnected; using in-browser model');
     engine = null;
     engineDevice = null;
-    for (const resolve of pending.values()) resolve({ error: 'engine disconnected' });
+    for (const resolve of pending.values()) resolve({ type: 'error', error: 'engine disconnected' });
     pending.clear();
   };
   ws.onerror = () => {}; // onclose follows; not running is the normal case
 }
 
-function scoreOnEngine(images: string[]): Promise<number[]> {
+/** Send one request to the engine and wait for its reply (rejects on timeout or engine error). */
+function askEngine(payload: Record<string, unknown>): Promise<any> {
   return new Promise((resolve, reject) => {
+    if (!(engine?.readyState === WebSocket.OPEN && engineDevice)) return reject(new Error('desktop engine is not running'));
     const id = nextId++;
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error('engine timeout'));
     }, ENGINE.timeoutMs);
-    pending.set(id, (r) => {
+    pending.set(id, (reply) => {
       clearTimeout(timer);
-      if (r.scores) resolve(r.scores);
-      else reject(new Error(r.error));
+      if (reply.type === 'error') reject(new Error(reply.error ?? 'engine error'));
+      else resolve(reply);
     });
-    engine!.send(JSON.stringify({ type: 'score', id, images }));
+    engine.send(JSON.stringify({ ...payload, id }));
   });
+}
+
+async function scoreOnEngine(images: string[]): Promise<number[]> {
+  return (await askEngine({ type: 'score', images })).scores;
 }
 
 async function inferAll(images: string[], gpu: boolean): Promise<InferResp> {
@@ -206,6 +213,13 @@ chrome.runtime.onMessage.addListener((msg: OffscreenMsg, _sender, sendResponse) 
   touch();
   if (msg.kind === 'INFER') {
     inferAll(msg.images, msg.gpu).then(sendResponse);
+    return true;
+  }
+  if (msg.kind === 'LABEL') {
+    connectEngine();
+    askEngine({ type: 'label', label: msg.label, key: msg.key, page: msg.page, images: msg.images })
+      .then((r) => sendResponse({ ok: true, saved: r.saved, folder: r.folder } satisfies LabelResp))
+      .catch((e) => sendResponse({ ok: false, error: String((e as Error).message ?? e) } satisfies LabelResp));
     return true;
   }
   if (msg.kind === 'STATUS') {

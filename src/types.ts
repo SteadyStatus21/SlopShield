@@ -35,10 +35,14 @@ export interface BackendInfo {
 
 // content → sw
 export type ContentMsg =
-  | { kind: 'CAPTURE_REQ'; rect: Rect; viewportWidth: number; viewportHeight: number }
+  | { kind: 'CAPTURE_REQ'; rect: Rect; viewportWidth: number; viewportHeight: number; key?: string }
   | { kind: 'CACHE_GET'; key: string }
   | { kind: 'CACHE_SET'; key: string; verdict: Verdict }
-  | { kind: 'JANK' }; // the page had too much long-task time recently
+  | { kind: 'JANK' } // the page had too much long-task time recently
+  | { kind: 'LABEL'; key: string; label: Label }; // user says this item is AI / real → engine dataset
+
+export type Label = 'ai' | 'real';
+export type LabelResp = { ok: true; saved: number; folder: string } | { ok: false; error: string };
 
 export type CaptureResp =
   | { ok: true; score: number }
@@ -47,7 +51,8 @@ export type CaptureResp =
 // sw → offscreen
 export type OffscreenMsg =
   | { target: 'offscreen'; kind: 'INFER'; images: string[]; gpu: boolean } // data URLs, already resized
-  | { target: 'offscreen'; kind: 'STATUS' };
+  | { target: 'offscreen'; kind: 'STATUS' }
+  | { target: 'offscreen'; kind: 'LABEL'; label: Label; key: string; page: string; images: string[] };
 
 export type InferResp =
   | { ok: true; scores: number[]; backend: BackendInfo['backend']; device?: string }

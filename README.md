@@ -69,6 +69,10 @@ which one is active ("desktop engine" / "in-browser").
 engine/start_engine.bat            # or: python engine/slopshield_engine.py
 ```
 
+**Labeling:** while the engine runs, flagged/blocked items show "Is this right? [Yes, AI] [Not AI]"
+(and in Debug mode every scanned item's tag has [AI] [Real]). Each click saves the item's recent
+crops to `dataset/ai/` or `dataset/real/` on your machine for evaluation and retraining.
+
 It listens only on `127.0.0.1:47321` and accepts only the SlopShield extension (the manifest pins
 the extension ID `jpcjjoehiklpjalioikahehafipnbjjk`), so websites can't use it. Nothing leaves the machine.
 

@@ -14,6 +14,11 @@ HackPSU Fall 2026. **Submission due Sun Oct 25, 12:00 PM** (hacking ends 1:45 PM
 
 Example: "Talking To Brick Wall — Maronzio Vance (2010)" on X blocked at **0.99**. A real video wrongly blocked is worse than a miss for our users.
 
+0. **Label while you browse (built, Oct 24 22:10).** With the desktop engine running, every flag/block
+   overlay has "Is this right? [Yes, AI] [Not AI]", and in Debug mode every scanned item's tag has
+   [AI] [Real]. A click saves that item's recent clean crops to `dataset/ai/<site>_<id>/` or
+   `dataset/real/<site>_<id>/` (re-labelling moves it). Next: retrain the head on these labels with
+   OpenVINO feature extraction (minutes, not 40 min of CPU), keeping a held-out split for honest numbers.
 1. **Collect real negatives from the actual feeds.** Restructure `dataset/` into:
    - `dataset/ai/` — verified AI (move the current 7 clips here)
    - `dataset/real/` — real videos the model wrongly flagged, plus ordinary real feed videos (old uploads, vlogs, music videos, webcam/phone footage, screen recordings, cartoons/anime, game clips)

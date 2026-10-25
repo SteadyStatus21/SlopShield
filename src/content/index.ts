@@ -2,7 +2,7 @@
 import { MEDIA_SELECTOR, VISION } from '../config';
 import { log } from '../log';
 import { getSettings, onSettingsChanged } from '../settings';
-import type { CaptureResp, ContentMsg, Settings, Verdict } from '../types';
+import type { CaptureResp, ContentMsg, Label, LabelResp, Settings, Verdict } from '../types';
 import { showBadge, showBlock, showDebugTag, type DebugTag, type Overlay, type TagTone } from './overlay';
 import { combine, findCgiContext, findPlatformLabel, gatherText, parentOf, scoreText, trimmedMean } from './signals';
 
@@ -60,8 +60,23 @@ function shutdown() {
 /** Debug mode: show what the pipeline is doing with this element. */
 function note(m: Media, st: VState, text: string, tone: TagTone = 'info') {
   if (!settings.debug) return;
-  st.tag ??= showDebugTag(m);
+  st.tag ??= showDebugTag(m, (label) => labelItem(m, st, label));
   st.tag.set(text, tone);
+}
+
+/**
+ * User feedback: store this item's recent crops as an AI / real example (desktop engine → dataset/).
+ * "Not AI" on a flagged item also lifts the flag for the rest of this page view.
+ */
+async function labelItem(m: Media, st: VState, label: Label): Promise<string> {
+  const resp = await send<LabelResp>({ kind: 'LABEL', key: st.key, label });
+  if (!resp) throw new Error('extension unavailable');
+  if (!resp.ok) throw new Error(resp.error);
+  if (label === 'real') {
+    revealed.add(st.key);
+    render(m, st);
+  }
+  return `saved as ${label === 'ai' ? 'AI' : 'real'} (${resp.saved} crops)`;
 }
 
 /** A video in the same spot as this image (Instagram/Reddit put a thumbnail <img> under the <video>). */
@@ -334,6 +349,7 @@ async function sampleFrames(m: Media, st: VState): Promise<number | null | 'inte
       rect: { x: r.left, y: r.top, width: r.width, height: r.height },
       viewportWidth: innerWidth,
       viewportHeight: innerHeight,
+      key: st.key, // lets the background keep these crops for a later "Not AI" / "Yes, AI" label
     });
     if (resp && !resp.ok && resp.reason === 'busy') {
       // The model is working on something else or resting; wait our turn (doesn't count as an attempt).
@@ -409,6 +425,7 @@ function render(m: Media, st: VState) {
       revealed.add(st.key);
       st.overlay = undefined;
     },
+    onLabel: (label: Label) => labelItem(m, st, label),
     stacked: stackedWith(m),
   };
   st.overlay = settings.mode === 'block' ? showBlock(opts) : showBadge(opts);

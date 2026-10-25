@@ -1,6 +1,9 @@
-// Blur + badge + "Show anyway".
+// Blur + badge + "Show anyway", plus "Yes, AI" / "Not AI" feedback that becomes training data.
 import css from './overlay.css';
-import type { Verdict } from '../types';
+import type { Label, Verdict } from '../types';
+
+/** Saves this item as AI / real via the desktop engine; resolves to a short status message. */
+export type OnLabel = (label: Label) => Promise<string>;
 
 export interface Overlay {
   update(): void; // reposition over the media element
@@ -12,6 +15,7 @@ interface Opts {
   media: HTMLVideoElement | HTMLImageElement;
   verdict: Verdict;
   onReveal: () => void;
+  onLabel?: OnLabel;
   stacked?: Array<HTMLVideoElement | HTMLImageElement>; // other media in the same spot (block mode)
 }
 
@@ -45,16 +49,45 @@ function mount(media: HTMLElement) {
   return { host, frame, position };
 }
 
+/**
+ * "Is this right?  [Yes, AI] [Not AI]" — one click stores the item's recent crops in dataset/ai or
+ * dataset/real (desktop engine), so mistakes become training/eval data. `after` runs on success.
+ */
+function feedback(onLabel: OnLabel, after?: (label: Label) => void): HTMLElement {
+  const box = el('div', 'fb');
+  const msg = el('span', 'fbmsg', 'Is this right?');
+  const mk = (label: Label, text: string) => {
+    const b = el('button', `fbbtn ${label}`, text);
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      for (const x of box.querySelectorAll('button')) x.disabled = true;
+      msg.textContent = 'Saving…';
+      try {
+        msg.textContent = await onLabel(label);
+        after?.(label);
+      } catch (err) {
+        msg.textContent = String((err as Error).message ?? err);
+        for (const x of box.querySelectorAll('button')) x.disabled = false;
+      }
+    });
+    return b;
+  };
+  box.append(msg, mk('ai', 'Yes, AI'), mk('real', 'Not AI'));
+  return box;
+}
+
 // The score isn't a calibrated probability, so never show certainty.
 const pct = (v: Verdict) => `${Math.min(95, Math.round(v.score * 100))}%`;
 
-export function showBadge({ media, verdict }: Opts): Overlay {
+export function showBadge({ media, verdict, onLabel, onReveal }: Opts): Overlay {
   const { host, frame, position } = mount(media);
   const badge = el('div', 'badge', `⚠ Likely AI · ${pct(verdict)}`);
   const tip = el('div', 'tip', 'Why SlopShield flagged this:');
   const ul = el('ul');
   for (const r of verdict.reasons) ul.append(el('li', undefined, r));
   tip.append(ul);
+  // "Not AI" also removes the badge (after a moment, so the confirmation is readable).
+  if (onLabel) tip.append(feedback(onLabel, (label) => label === 'real' && setTimeout(() => (host.remove(), onReveal()), 1200)));
   badge.append(tip);
   frame.append(badge);
   return { update: position, destroy: () => host.remove() };
@@ -103,7 +136,7 @@ function suppress(m: HTMLVideoElement | HTMLImageElement): () => void {
   };
 }
 
-export function showBlock({ media, verdict, onReveal, stacked = [] }: Opts): Overlay {
+export function showBlock({ media, verdict, onReveal, onLabel, stacked = [] }: Opts): Overlay {
   const { host, frame, position } = mount(media);
   // Players often stack a poster <img> and the playing <video> in the same spot; whichever one
   // was flagged, everything in the spot is blurred and paused, or the video plays on top.
@@ -128,6 +161,8 @@ export function showBlock({ media, verdict, onReveal, stacked = [] }: Opts): Ove
   const reveal = el('button', undefined, 'Show anyway');
   reveal.addEventListener('click', () => done());
   panel.append(reveal);
+  // "Not AI" saves it as a real example and reveals it right away.
+  if (onLabel) panel.append(feedback(onLabel, (label) => label === 'real' && setTimeout(done, 600)));
   // Clicks on the overlay must not reach the player underneath.
   block.addEventListener('click', (e) => e.stopPropagation());
   block.append(panel);
@@ -159,12 +194,31 @@ export interface DebugTag {
  * element (above it, or below it if there's no room) so it never ends up in the screenshot
  * crops the model scores.
  */
-export function showDebugTag(media: HTMLElement): DebugTag {
+export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
   const host = document.createElement('slopshield-debug');
   const root = host.attachShadow({ mode: 'closed' });
   const style = el('style');
   style.textContent = css;
   const tag = el('div', 'dbg');
+  const text = el('span');
+  tag.append(text);
+  // Debug/labeling mode: label any scanned item, including misses the model let through.
+  if (onLabel) {
+    const lb = (label: Label, t: string) => {
+      const b = el('button', `dbgbtn ${label}`, t);
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        text.textContent = '🛡 saving…';
+        try {
+          text.textContent = `🛡 ${await onLabel(label)}`;
+        } catch (err) {
+          text.textContent = `🛡 ${String((err as Error).message ?? err)}`;
+        }
+      });
+      return b;
+    };
+    tag.append(lb('ai', 'AI'), lb('real', 'Real'));
+  }
   root.append(style, tag);
   document.documentElement.append(host);
 
@@ -181,8 +235,8 @@ export function showDebugTag(media: HTMLElement): DebugTag {
     tag.style.maxWidth = `${Math.max(160, r.width)}px`;
   };
   return {
-    set(text, tone) {
-      tag.textContent = `🛡 ${text}`;
+    set(t, tone) {
+      text.textContent = `🛡 ${t}`;
       tag.className = `dbg ${tone}`;
       update();
     },
