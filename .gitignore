@@ -13,3 +13,4 @@ models/_train/
 kernel.errors.txt
 engine.log
 engine/last_crops/
+train.log

@@ -73,6 +73,12 @@ engine/start_engine.bat            # or: python engine/slopshield_engine.py
 (and in Debug mode every scanned item's tag has [AI] [Real]). Each click saves the item's recent
 crops to `dataset/ai/` or `dataset/real/` on your machine for evaluation and retraining.
 
+**Retrain from your labels:** double-click `train.bat` (or `python scripts/train_from_labels.py`). It holds
+out ~1 in 5 labelled items, extracts features on the GPU (cached, so repeat runs take ~30 s), retrains the
+head on the Hugging Face set + your labels, prints a held-out scorecard (old vs new), backs up the current
+model to `models/_ref/backups/`, installs the new one and rebuilds `dist/`. Then restart the engine and
+reload the extension. `train.bat --dry-run` reports without installing.
+
 It listens only on `127.0.0.1:47321` and accepts only the SlopShield extension (the manifest pins
 the extension ID `jpcjjoehiklpjalioikahehafipnbjjk`), so websites can't use it. Nothing leaves the machine.
 

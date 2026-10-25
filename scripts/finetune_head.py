@@ -116,9 +116,10 @@ AGREE_SHIFT = float(np.log(AGREE_HEAD_P / (1 - AGREE_HEAD_P)) - np.log(AGREE_BAS
 class Detector(torch.nn.Module):
     """Frozen ViT + new head, combined with the base model by the agreement rule (exported to ONNX)."""
 
-    def __init__(self, vit, w, v, b):
+    def __init__(self, vit, w, v, b, agree=True):
         super().__init__()
         self.vit = vit
+        self.agree = agree
         self.w = torch.nn.Parameter(torch.tensor(np.asarray(w).reshape(-1), dtype=torch.float32))
         self.v = torch.nn.Parameter(torch.tensor(float(v), dtype=torch.float32))
         self.b = torch.nn.Parameter(torch.tensor(float(b), dtype=torch.float32))
@@ -127,6 +128,8 @@ class Detector(torch.nn.Module):
         f = self.vit.forward_head(self.vit.forward_features(pixel_values), pre_logits=True)
         base = self.vit.head(f)
         head = f @ self.w[:, None] + base * self.v + self.b
+        if not self.agree:
+            return head
         return torch.minimum(head, base + (BIAS + AGREE_SHIFT))
 
 
@@ -140,17 +143,18 @@ def load_vit(weights):
     return vit.eval()
 
 
-def export(vit, w, v, b, out, trained_on):
+def export(vit, w, v, b, out, trained_on, agree=True):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    np.savez(out / "head.npz", w=np.asarray(w).reshape(-1), v=v, b=b)  # lets later runs re-export without retraining
-    torch.onnx.export(Detector(vit, w, v, b).eval(), (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"),
+    np.savez(out / "head.npz", w=np.asarray(w).reshape(-1), v=v, b=b, agree=agree)  # lets later runs re-export without retraining
+    torch.onnx.export(Detector(vit, w, v, b, agree).eval(), (torch.randn(1, 3, SIZE, SIZE),), str(out / "model.onnx"),
                       input_names=["pixel_values"], output_names=["logits"],
                       dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
                       opset_version=17, do_constant_folding=True, dynamo=False)
     meta = {"name": f"{REPO} + SlopShield social-video head (agreement rule)", "size": SIZE, "resizeShortest": SHORT,
             "mean": MEAN, "std": STD, "aiIndex": 0, "labels": ["ai (sigmoid)"], "inputName": "pixel_values",
-            "rule": f"min(head, base{BIAS:+.3f}{AGREE_SHIFT:+.3f}): head>={AGREE_HEAD_P} AND base>={AGREE_BASE_P}",
+            "rule": (f"min(head, base{BIAS:+.3f}{AGREE_SHIFT:+.3f}): head>={AGREE_HEAD_P} AND base>={AGREE_BASE_P}"
+                     if agree else "head only"),
             "trainedOn": trained_on}
     (out / "model.json").write_text(json.dumps(meta, indent=2))
     print(f"wrote {out / 'model.onnx'} and model.json", flush=True)
