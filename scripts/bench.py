@@ -7,6 +7,7 @@ Sets (none are ever trained on):
   games         bench/games: 30 real video-game screenshots (all should be "not AI")
   shorts        bench/shorts/ai: phone-style AI shorts (ymo2017/ai-shorts-videos), 1/3 of concepts held out
   pexels        bench/pexels/real: modern real stock video (Pexels), 1/3 of clips held out
+  newgen        bench/newgen/ai: current-generation AI video (Seedance 1.5 Pro, Kling 2.5 Turbo), 1/3 held out
 Sets whose folder is missing are skipped (scripts/fetch_training_data.py creates shorts and pexels).
 
 Features come from the frozen backbone (OpenVINO, cached in models/_train/features_ov.npz), so
@@ -81,7 +82,8 @@ def load_sets(extract=None, verbose=True):
         if frames:
             hold[item] = (y, frames)
     sets["user-holdout"] = hold
-    for name, sub in (("video", "vidtest"), ("images", "aigc"), ("games", "games"), ("shorts", "shorts"), ("pexels", "pexels")):
+    for name, sub in (("video", "vidtest"), ("images", "aigc"), ("games", "games"), ("shorts", "shorts"), ("pexels", "pexels"),
+                      ("newgen", "newgen")):
         if not (BENCH / sub).exists():
             continue
         d = {}

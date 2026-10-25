@@ -6,8 +6,9 @@
 Sources
   AI video    Rapidata Veo 3 / Veo 3.1 / Sora sets, bitmind Kling (more clips than before)
   AI shorts   ymo2017/ai-shorts-videos: phone-style vertical AI shorts; 1/3 of concepts held out in bench/shorts
+  AI new-gen  Seedance 1.5 Pro (330-prompt sample) + Kling 2.5 Turbo Pro (200): held-out bench/newgen only
   real video  AudioSet balanced + unbalanced (YouTube clips)
-  real modern Pexels stock video (zengxianyu/open-sora-pexels-subset, 4 shards); 1/3 held out in bench/pexels
+  real modern Pexels stock video (zengxianyu/open-sora-pexels-subset): 4 shards train + bench, 4 more bench only
   AI stills   Thermostatic/frontier-synthetic-images-2026 (FLUX.2, etc.)
   real stills AIGC-Detection-Benchmark real photos, video-game screenshots,
               + locally generated text cards / UI screenshots (meme cards were a false-positive source)
@@ -204,6 +205,7 @@ def main():
         list(ex.map(get, jobs))
     fetch_shorts()
     fetch_pexels()
+    fetch_newgen()
     say(f"    training clips now: {len(list(TRAIN.glob('1_*.mp4')))} AI, {len(list(TRAIN.glob('0_*.mp4')))} real")
 
     say("[2/4] AI stills (frontier synthetic 2026) ...")
@@ -257,16 +259,70 @@ def fetch_shorts():
 PEXELS = "zengxianyu/open-sora-pexels-subset"  # real stock video (Pexels, crawled early 2024), WebDataset shards
 PEXELS_SHARDS = ["videos/5000_0_shard_0000.tar", "videos/5000_0_shard_0020.tar", "videos/5000_1_shard_0010.tar",
                  "videos/5000_1_shard_0040.tar"]
+# More held-out real video for the benchmark. Their training share is parked in models/_ref/pexels_extra: the Oct 25
+# cross-validation showed no clear gain from training on it.
+PEXELS_BENCH_SHARDS = ["videos/5000_0_shard_0005.tar", "videos/5000_0_shard_0030.tar", "videos/5000_1_shard_0025.tar",
+                       "videos/5000_1_shard_0050.tar"]
+
+
+SEEDANCE = "sonnymushroom/seedance1.5pro_gen"  # Seedance 1.5 Pro generations (several seeds per prompt)
+KLING25 = "yang29/GAD-Video-Data-200-KlingAI-2.5-Turbo-Pro"
+
+
+def fetch_newgen(n_seedance=330):
+    """Current-generation AI video, split by prompt (seeds of one Seedance prompt stay together): 1/3 -> bench/newgen/ai
+    (held out); 2/3 parked in models/_ref/newgen_train (the Oct 25 cross-validation showed no clear gain from training
+    on it: +0.7/68 AI on the user's feed for +1.0/47 real flagged)."""
+    from huggingface_hub import HfApi
+
+    held_dir = BENCH / "newgen" / "ai"
+    park = ROOT / "models" / "_ref" / "newgen_train"
+    for d in (held_dir, park):
+        d.mkdir(parents=True, exist_ok=True)
+    held = lambda concept: int(hashlib.sha1(concept.encode()).hexdigest(), 16) % 3 == 0
+    jobs = []
+    sd = [f for f in HfApi().list_repo_tree(SEEDANCE, repo_type="dataset", recursive=True)
+          if getattr(f, "size", None) and f.path.endswith(".mp4") and f.path.startswith("train/") and f.size < 40_000_000]
+    by_prompt = {}
+    for f in sd:
+        by_prompt.setdefault(f"{re.sub(r'_seed[0-9]+$', '', f.path.split('/')[1])}/{Path(f.path).stem}", []).append(f)
+    rng = random.Random(5)
+    for prompt in rng.sample(sorted(by_prompt), min(n_seedance, len(by_prompt))):
+        f = rng.choice(by_prompt[prompt])
+        name = re.sub(r"[^A-Za-z0-9_-]", "_", f.path[6:-4])
+        dst = held_dir / f"ai_newgen_seedance_{name}.mp4" if held("sd:" + prompt) else park / f"1_newgen_seedance_{name}.mp4"
+        jobs.append((f"https://huggingface.co/datasets/{SEEDANCE}/resolve/main/{f.path}", dst))
+    for f in HfApi().list_repo_tree(KLING25, repo_type="dataset", recursive=True):
+        if getattr(f, "size", None) and f.path.endswith(".mp4"):
+            row = f.path.split("_")[1]
+            dst = held_dir / f"ai_newgen_kling25_{row}.mp4" if held("kl:" + row) else park / f"1_newgen_kling25_{row}.mp4"
+            jobs.append((f"https://huggingface.co/datasets/{KLING25}/resolve/main/{urllib.parse.quote(f.path)}", dst))
+    jobs = [j for j in jobs if not j[1].exists()]
+    say(f"    downloading {len(jobs)} new-gen AI clips ...")
+
+    def get(job):
+        try:
+            urllib.request.urlretrieve(*job)
+        except Exception as e:
+            say(f"    fail {job[1].name}: {e}")
+
+    with ThreadPoolExecutor(6) as ex:
+        list(ex.map(get, jobs))
+    say(f"    new-gen: {len(list(held_dir.glob('*.mp4')))} held out, {len(list(park.glob('*.mp4')))} parked")
 
 
 def fetch_pexels():
-    """Modern real video (stock footage, ~40% vertical), split by clip: 2/3 -> models/_train/0_pexels_*.mp4,
-    1/3 -> bench/pexels/real (held out). Only .mp4 members are read, by basename."""
+    """Modern real video (stock footage, ~40% vertical), split by clip: 1/3 -> bench/pexels/real (held out), 2/3 ->
+    models/_train/0_pexels_*.mp4 (PEXELS_SHARDS) or models/_ref/pexels_extra (PEXELS_BENCH_SHARDS). Only .mp4 members
+    are read, by basename."""
     import tarfile
 
     held_dir = BENCH / "pexels" / "real"
     held_dir.mkdir(parents=True, exist_ok=True)
-    for shard in PEXELS_SHARDS:
+    extra = ROOT / "models" / "_ref" / "pexels_extra"
+    extra.mkdir(parents=True, exist_ok=True)
+    for shard in PEXELS_SHARDS + PEXELS_BENCH_SHARDS:
+        train_dir = TRAIN if shard in PEXELS_SHARDS else extra
         tmp = TRAIN / Path(shard).name
         say(f"    pexels {shard} ...")
         urllib.request.urlretrieve(f"https://huggingface.co/datasets/{PEXELS}/resolve/main/{shard}", tmp)
@@ -276,7 +332,7 @@ def fetch_pexels():
                     continue
                 vid = re.sub(r"[^A-Za-z0-9_-]", "_", Path(m.name).stem)[:60]
                 held = int(hashlib.sha1(vid.encode()).hexdigest(), 16) % 3 == 0
-                dst = held_dir / f"real_pexels_{vid}.mp4" if held else TRAIN / f"0_pexels_{vid}.mp4"
+                dst = held_dir / f"real_pexels_{vid}.mp4" if held else train_dir / f"0_pexels_{vid}.mp4"
                 if not dst.exists():
                     dst.write_bytes(tf.extractfile(m).read())
         tmp.unlink()
