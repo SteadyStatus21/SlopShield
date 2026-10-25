@@ -151,6 +151,63 @@ def user_items():
     return items
 
 
+TRAIN_IMG = MODELS / "_train_img"
+
+
+def public_training(extract, cache, verbose=True):
+    """Features for the public training data, extracting (and caching) anything new.
+
+    Clips in models/_train (1_* = AI, 0_* = real): 3 frames, clean + social-media-degraded view, centre crop.
+    Stills in models/_train_img/<ai|real>/: tiled like the extension, clean + degraded view.
+    Returns F (n,384), B (n,), y (n,), source name per crop.
+    """
+    rng = random.Random(0)
+    F, B, Y, SRC = [], [], [], []
+    vids = sorted(TRAIN_DIR.glob("*.mp4"))
+    stills = [(p, 1 if p.parent.name == "ai" else 0) for p in sorted(TRAIN_IMG.glob("*/*")) if p.suffix.lower() in IMG]
+    todo = sum(f"hf:{v.name}" not in cache for v in vids) + sum(f"img:{p.parent.name}/{p.name}" not in cache for p, _ in stills)
+    if verbose and todo:
+        say(f"      extracting public training data: {todo} new items (cached afterwards)")
+    done = 0
+    for v in vids:
+        key = f"hf:{v.name}"
+        if key not in cache:
+            rows = []
+            for fr in fh.frames(v):
+                fr = trim_borders(fr)
+                for view in (fr, fh.degrade(fr, rng)):
+                    k = fh.SHORT / min(view.size)
+                    im = view.resize((round(view.width * k), round(view.height * k)), Image.BICUBIC)
+                    l, t = (im.width - fh.SIZE) // 2, (im.height - fh.SIZE) // 2
+                    rows.append(extract(im.crop((l, t, l + fh.SIZE, t + fh.SIZE))))
+            cache[key] = rows
+            done += 1
+            if done % 50 == 0:
+                save_cache(cache)
+                if verbose:
+                    say(f"      public data: {done}/{todo}")
+        for f, b in cache[key]:
+            F.append(f); B.append(b); Y.append(1 if v.name.startswith("1_") else 0); SRC.append("clip")
+    for p, y in stills:
+        key = f"img:{p.parent.name}/{p.name}"
+        if key not in cache:
+            try:
+                img = Image.open(p).convert("RGB")
+            except Exception:
+                cache[key] = []
+                continue
+            cache[key] = [extract(t) for view in (img, fh.degrade(img, rng)) for t in tiles(view)]
+            done += 1
+            if done % 50 == 0:
+                save_cache(cache)
+                if verbose:
+                    say(f"      public data: {done}/{todo}")
+        for f, b in cache[key]:
+            F.append(f); B.append(b); Y.append(y); SRC.append("still:" + p.name.split("_")[0])
+    save_cache(cache)
+    return F, B, Y, SRC
+
+
 def is_holdout(item_id: str) -> bool:
     return int(hashlib.sha1(item_id.encode()).hexdigest(), 16) % 5 == 0
 
@@ -252,34 +309,10 @@ def main():
             say(f"      features: {i}/{len(items)} items")
     say(f"[3/6] features for your items: {sum(len(r[2]) for r in user_rows.values())} crops ({new} new, rest cached)")
 
-    # --- HF training set (clips in models/_train, from scripts/finetune_head.py) ---
-    rng = random.Random(0)
+    # --- public training set (models/_train clips + models/_train_img stills) ---
+    hf_F, hf_B, hf_y, _src = public_training(extract, cache)
     hf_videos = sorted(TRAIN_DIR.glob("*.mp4"))
-    hf_F, hf_B, hf_y = [], [], []
-    todo = [v for v in hf_videos if f"hf:{v.name}" not in cache]
-    if todo:
-        say(f"      extracting HF training clips: {len(todo)} new of {len(hf_videos)} (one-time, then cached)")
-    for i, v in enumerate(hf_videos, 1):
-        key = f"hf:{v.name}"
-        if key not in cache:
-            rows = []
-            for fr in fh.frames(v):
-                fr = trim_borders(fr)
-                for view in (fr, fh.degrade(fr, rng)):
-                    k = fh.SHORT / min(view.size)
-                    im = view.resize((round(view.width * k), round(view.height * k)), Image.BICUBIC)
-                    l, t = (im.width - fh.SIZE) // 2, (im.height - fh.SIZE) // 2
-                    rows.append(extract(im.crop((l, t, l + fh.SIZE, t + fh.SIZE))))
-            cache[key] = rows
-            if i % 50 == 0:
-                save_cache(cache)
-                say(f"      HF clips: {i}/{len(hf_videos)}")
-        for f, b in cache[key]:
-            hf_F.append(f)
-            hf_B.append(b)
-            hf_y.append(1 if v.name.startswith("1_") else 0)
-    save_cache(cache)
-    say(f"      HF training set: {len(hf_videos)} clips, {len(hf_y)} crops ({sum(hf_y)} AI)")
+    say(f"      public training set: {len(hf_videos)} clips + {len(list(TRAIN_IMG.glob('*/*')))} stills, {len(hf_y)} crops ({sum(hf_y)} AI)")
 
     # --- train ---
     from sklearn.linear_model import LogisticRegression
