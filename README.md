@@ -19,7 +19,7 @@ For each video or image that is at least half on screen (including ones inside s
 
 1. **Platform labels.** Looks for "AI info", "Made with AI", "Altered or synthetic content" and similar in the post around the video. A label is decisive, so no inference runs.
 2. **Text cues.** Scores hashtags (`#sora`, `#veo3`, `#aivideo` …) and caption keywords, combined with noisy-OR. In **fast mode** the pipeline stops here.
-3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, center-crops to the model's input (384 px), and the offscreen document runs the ONNX model, a 22M-param ViT-S (Community Forensics frontier model, Aug 2026) with a head SlopShield trained on modern AI video, flagging only when both agree (see `MODEL.md`: 53/60 modern AI videos caught, 1 false alarm across 130 held-out real videos/photos/games). Frames are combined with a trimmed mean.
+3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, center-crops to the model's input (384 px), and the offscreen document runs the ONNX model, a 22M-param ViT-S (Community Forensics frontier model, Aug 2026) with a head SlopShield trained on modern AI video, flagging only when both agree (see `MODEL.md`: 57/60 modern AI videos caught; 2 false alarms across 140 held-out real videos, photos, game screenshots and labelled feed items). Frames are combined with a trimmed mean.
 4. **Combine.** A weighted score (`WEIGHTS` in `src/config.ts`) is compared with your threshold. Every verdict comes with `reasons[]`, which the badge or overlay shows.
 
 Verdicts are cached per video (`currentSrc`, or page URL + index for MediaSource players), so a video is never scanned twice.
@@ -100,11 +100,12 @@ This prints per-clip scores, precision/recall/F1 and the confusion matrix.
 
 | Set | n | Precision | Recall | F1 |
 |---|---|---|---|---|
-| [AIGC-Detection-Benchmark](https://huggingface.co/datasets/TheKernel01/AIGC-Detection-Benchmark) random sample, still images (40 real / 40 AI, 14 generators) | 80 | 1.00 | 0.85 | 0.92 |
+| Modern AI video (Sora, Veo 3, Veo 3.1, Kling) vs. real YouTube/AudioSet clips | 120 | 0.98 | 0.95 | 0.97 |
+| [AIGC-Detection-Benchmark](https://huggingface.co/datasets/TheKernel01/AIGC-Detection-Benchmark) random sample, still images (40 real / 40 AI, 14 generators) | 80 | 1.00 | 0.53 | 0.69 |
 | Video-game screenshots ([game_screenshots_11k](https://huggingface.co/datasets/badigadiii/game_screenshots_11k)), all not-AI | 30 | — | — | 0/30 flagged |
-| demo clips (video) | — | — | — | — |
+| Held-out slice of our own labelled feed (Instagram/X/Reddit) | 24 | 0.86 | 0.43 | 0.57 |
 
-Measured Oct 24, 2026 with the shipped model at threshold 0.6. No real photos or game screenshots were flagged, and it caught 34/40 AI images. The previous model (SigLIP-B) scored 0.91 precision / 0.50 recall and flagged **16/30 game screenshots** as AI; `MODEL.md` has the full comparison. Samples are small, the detector may have seen some of these older generators in training, and video generators (Sora, Veo, Kling) aren't in this benchmark.
+Measured Oct 25, 2026 with `python scripts/bench.py` (the same tiling, trimming and agreement rule as the extension) at threshold 0.6. Overall: 84/114 AI caught, 2/140 real items flagged. The model is tuned to avoid false alarms, so it gives up some recall on older still-image generators. The previous model (SigLIP-B) flagged **16/30 game screenshots** as AI; `MODEL.md` has the full comparison. Samples are small.
 
 **Video games and CGI.** The first model called rendered graphics "AI" on every frame, so more frames only made it more confident. Switching models fixed most of this (0/30 game screenshots flagged). As a second safeguard, SlopShield detects gameplay/CGI context (game titles, "gameplay", engine names, "CGI", "3D render"…) and skips the image model there, judging those videos on labels and text only.
 

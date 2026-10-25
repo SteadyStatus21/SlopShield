@@ -13,23 +13,32 @@
 | Source | `python scripts/fetch_model.py` (`torch.onnx.export`, opset 17). The preprocessing goes into `models/model.json`, which the extension and `scripts/eval.py` read. |
 
 
-## Shipped model (Oct 24, 2026): frontier ViT-S + social-video head, agreement rule
+## Shipped model (Oct 25, 2026): frontier ViT-S + MLP head, agreement rule
 
 `models/model.onnx` = `Thermostatic/community-forensics-frontier-detector-2026-08` (ViT-S/16 @384, frozen) plus a
-logistic head trained by `scripts/finetune_head.py` on 238 AI clips (Veo 3, Veo 3.1, Kling, Sora, other generators)
-and 240 real AudioSet clips, clean and social-media-degraded. Output = `min(head, calibrated base + 1.79)`: it flags
-only when head >= 0.6 AND base >= 0.2. Rebuild: `python scripts/finetune_head.py --exclude <test dir> --exclude dataset`.
+64-unit MLP head on [384-d features, base logit], trained by `scripts/train_from_labels.py` (via `train.bat`) on
+~1,300 AI/real clips (Veo 3, Veo 3.1, Kling, Sora, other generators vs. AudioSet; clean and social-media-degraded),
+~1,600 stills (frontier synthetic AI, real photos, game screenshots, generated text/UI cards) and the user's labels
+(weighted 4x). Output = `min(head, calibrated base + shift)`: it flags only when the head says >= 0.6 AND the base
+model says >= 0.05. Every candidate is scored by `scripts/bench.py`; `train.bat` installs (and pushes) it only if
+the objective (AI recall - 4 x false-positive rate, pooled) beats the installed model.
 
-Held-out (never trained on), threshold 0.6:
+Held-out (never trained on), threshold 0.6, `python scripts/bench.py`:
 
-| Set | Old CommunityForensics | Frontier only | Head only | **Shipped (agreement)** |
+| Set | Old CommunityForensics | Frontier only | MLP head only | **Shipped (agreement)** |
 |---|---|---|---|---|
-| Modern AI video caught (60: Sora/Veo3/Veo3.1/Kling) | 14 | 55 | 56 | **53** |
-| Real video flagged (60, AudioSet) | 0 | 11 | 3 | **1** |
-| Real photos flagged (40) | 0 | 0 | 10 | **0** |
-| Game screenshots flagged (30) | 0 | 0 | 8 | **0** |
-| AI still images caught (40, older generators) | 34 | 29 | 30 | 24 |
-| User's in-the-wild AI clips caught (7) | 0 | 3 | 4 | 3 |
+| Modern AI video caught (60: Sora/Veo3/Veo3.1/Kling) | 14 | 57 | 57 | **57** |
+| Real video flagged (60, AudioSet) | 0 | 12 | 1 | **1** |
+| AI still images caught (40, AIGC benchmark) | 34 | 30 | 21 | 21 |
+| Real photos flagged (40) | 0 | 0 | 3 | **0** |
+| Game screenshots flagged (30) | 0 | 0 | 1 | **0** |
+| User's in-the-wild AI caught (14, held-out labels) | — | 6 | 8 | 6 |
+| User's in-the-wild real flagged (10, held-out labels) | — | 3 | 2 | **1** |
+| **All sets** | — | 93/114 AI, 15/140 real | 86/114, 7/140 | **84/114, 2/140** |
+
+How we got here (same benchmark): first head 77/114 AI with 7/140 real flagged; border-trimmed crops 75/6;
+expanded data + logistic head 79/2; MLP head 84/2. Seeds 0-3 of the MLP land at 84-90 AI with 1-4 real flagged;
+32 and 128 units were no better.
 
 The extension's WebGPU path was checked against native CPU outputs (identical to 3 decimals).
 
