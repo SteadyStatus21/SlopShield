@@ -26,15 +26,17 @@ export const VISION = {
   // the same batch and averaged (in logit space), so the model sees the whole post.
   maxTiles: 3,
   minVisibleRatio: 0.5,
+  dwellMs: 400, // start scanning only after an item has stayed on screen this long (no work while flick-scrolling)
   trimFraction: 0.25, // drop this fraction from each end before averaging
   minVariance: 40, // per-channel luminance variance below this = black/loading frame
   maxAttemptsPerVideo: 12, // give up after this many capture attempts
   // Performance budget (see the capture engine in background/sw.ts). After each batch the engine
   // rests so the model uses at most this fraction of the GPU/CPU. Measured on an Intel Iris Xe
   // (i7-12700H): ~160 ms/frame on WebGPU → ~2 fps; ~1.6 s/frame on 1-thread WASM → one frame/4 s.
-  maxDutyCycle: 0.4,
-  // captureVisibleTab allows ~2 screenshots/sec per extension: the hard fps ceiling.
-  minCaptureIntervalMs: 520,
+  maxDutyCycle: 0.3,
+  // captureVisibleTab allows ~2 screenshots/sec per extension: the hard fps ceiling. A little under
+  // it, since each screenshot also costs the browser a full-window encode.
+  minCaptureIntervalMs: 600,
   batchWindowMs: 40, // gather requests that arrive together into one screenshot
   maxQueue: 8, // requests waiting for a screenshot; beyond this callers get 'busy'
   busyRetryMs: 800, // how long a content script waits after a 'busy' reply

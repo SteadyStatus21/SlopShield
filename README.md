@@ -32,7 +32,7 @@ SlopShield is built to run on ordinary laptops without slowing them down:
 - **Cheapest signal first.** Labels and text cost microseconds. The model only runs when those are inconclusive, and fast mode turns it off entirely.
 - **Few frames.** At most 6 frames per video (fewer when the first 3 are clearly real), 1 per image. Sampling stops after 2 if they agree confidently, and runs once per video (cached).
 - **One screenshot, one batch.** All media visible at the same moment share one `captureVisibleTab` screenshot, and their crops run through the model as one batch. Chrome allows ~2 screenshots/sec, so the engine tops out at ~2 fps.
-- **Hard compute budget.** After each batch the engine rests in proportion to how long inference took, so the model uses at most ~40% of the GPU/CPU (`VISION.maxDutyCycle`). The queue is capped; extra requests get "busy" and retry, so work never piles up while scrolling.
+- **Hard compute budget.** After each batch the engine rests in proportion to how long inference took, so the model uses at most ~30% of the GPU/CPU (`VISION.maxDutyCycle`), and never rests more than 4 s. The queue is capped; extra requests get "busy" and retry, so work never piles up while scrolling. An item is only scanned once it has stayed on screen for 0.4 s, so flick-scrolling past things costs nothing.
 - **GPU by default, CPU fallback.** Measured on the minimum-spec target, an Intel Iris Xe laptop (i7-12700H): **~150 ms/frame on WebGPU** (≈2 fps, capped by the screenshot quota) vs ~1.6 s/frame on single-threaded WASM. Multi-threaded WASM barely helped (1.4 s with 4 threads). Without WebGPU it falls back to WASM automatically, and the popup's "Use GPU" toggle forces CPU if the browser stutters.
 - **Off the main thread.** Cropping happens in the service worker and inference in an offscreen document, so pages don't jank.
 - **Small model.** A 22M-parameter ViT-S (87 MB ONNX). It replaced a 93M SigLIP-B that was slower and less accurate (see `MODEL.md`).
@@ -58,6 +58,8 @@ Then open `chrome://extensions`, enable Developer mode, click **Load unpacked**,
 Without `models/model.onnx` the extension still works with labels and text only. The popup shows `model: error`.
 
 ### Optional: desktop engine (faster, uses the Intel GPU natively)
+
+On first install the extension opens a setup page that walks through this (download, `engine/setup_engine.bat`, live "connected" check) and then asks whether to warn about or block likely-AI content. Reopen it from the popup's "Setup guide" link.
 
 `engine/slopshield_engine.py` is a small local app that scores crops with OpenVINO on the GPU
 (Iris Xe: ~47 ms of inference, ~120 ms per crop round trip, vs ~150 ms in-browser WebGPU). When it's running, the extension

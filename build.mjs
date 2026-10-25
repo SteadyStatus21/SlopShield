@@ -13,6 +13,8 @@ function copyStatic() {
   cpSync('src/offscreen/offscreen.html', `${out}/offscreen/offscreen.html`);
   cpSync('src/popup/popup.html', `${out}/popup/popup.html`);
   cpSync('src/popup/popup.css', `${out}/popup/popup.css`);
+  cpSync('src/welcome/welcome.html', `${out}/welcome/welcome.html`);
+  cpSync('src/welcome/welcome.css', `${out}/welcome/welcome.css`);
   if (existsSync('icons')) cpSync('icons', `${out}/icons`, { recursive: true });
 
   // ORT loads its .wasm (and JSEP glue .mjs) at runtime from env.wasm.wasmPaths.
@@ -45,6 +47,7 @@ const builds = [
   { ...common, entryPoints: ['src/background/sw.ts'], outfile: `${out}/background/sw.js`, format: 'esm' },
   { ...common, entryPoints: ['src/offscreen/infer.ts'], outfile: `${out}/offscreen/infer.js`, format: 'esm', sourcemap: false },
   { ...common, entryPoints: ['src/popup/popup.ts'], outfile: `${out}/popup/popup.js`, format: 'iife' },
+  { ...common, entryPoints: ['src/welcome/welcome.ts'], outfile: `${out}/welcome/welcome.js`, format: 'iife' },
 ];
 
 if (watch) {

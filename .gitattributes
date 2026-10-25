@@ -3,3 +3,4 @@
 *.mp4 binary
 # The shipped detector (87 MB): stored with Git LFS, pushed when a new model wins on the benchmark.
 models/model.onnx filter=lfs diff=lfs merge=lfs -text
+*.bat text eol=crlf

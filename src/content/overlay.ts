@@ -82,7 +82,10 @@ const pct = (v: Verdict) => `${Math.min(95, Math.round(v.score * 100))}%`;
 
 export function showBadge({ media, verdict, onLabel, onReveal }: Opts): Overlay {
   const { host, frame, position } = mount(media);
-  const badge = el('div', 'badge', `⚠ Likely AI · ${pct(verdict)}`);
+  // Hard to miss: a red outline around the item and a full-width banner across its top.
+  frame.classList.add('flagged');
+  const badge = el('div', 'badge');
+  badge.append(el('span', 'btitle', '⚠ Likely AI-generated'), el('span', 'bsub', `${pct(verdict)} · hover for why`));
   const tip = el('div', 'tip', 'Why SlopShield flagged this:');
   const ul = el('ul');
   for (const r of verdict.reasons) ul.append(el('li', undefined, r));
@@ -107,7 +110,7 @@ const VIDEO_FIGHT_LIMIT = 3;
 
 function suppress(m: HTMLVideoElement | HTMLImageElement): () => void {
   const prev = { filter: m.style.filter, opacity: m.style.opacity };
-  m.style.filter = `${prev.filter} blur(32px)`.trim();
+  m.style.filter = `${prev.filter} blur(48px)`.trim();
   if (!(m instanceof HTMLVideoElement)) return () => (m.style.filter = prev.filter);
 
   const wasMuted = m.muted;
@@ -147,12 +150,22 @@ export function showBlock({ media, verdict, onReveal, onLabel, stacked = [] }: O
 
   const block = el('div', 'block');
   const panel = el('div', 'panel');
-  // Compact: title, one line of context, one row of actions. Full reasons on hover (title).
-  const title = el('h2', undefined, `⚠ Likely AI-generated ${video ? 'video' : 'image'}`);
-  const sub = el('p', undefined, `Score ${pct(verdict)} · can be wrong · be careful with requests for money`);
+  // Title, one line of context, one row of actions. Full reasons on hover (title).
+  const title = el('h2', undefined, `🛑 Blocked: likely AI-generated ${video ? 'video' : 'image'}`);
+  const sub = el('p', undefined, `SlopShield score ${pct(verdict)}. It can be wrong, but be careful: never send money or personal details because of a video.`);
   panel.title = verdict.reasons.join(' · ');
+  // Revealing takes two deliberate clicks; the second button only appears after the first.
   const reveal = el('button', 'reveal', 'Show anyway');
-  reveal.addEventListener('click', () => done());
+  let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+  reveal.addEventListener('click', () => {
+    if (reveal.classList.contains('confirm')) return done();
+    reveal.classList.add('confirm');
+    reveal.textContent = 'Yes, I understand. Show it';
+    confirmTimer = setTimeout(() => {
+      reveal.classList.remove('confirm');
+      reveal.textContent = 'Show anyway';
+    }, 5000);
+  });
   const actions = el('div', 'actions');
   actions.append(reveal);
   panel.append(title, sub, actions);
@@ -164,6 +177,7 @@ export function showBlock({ media, verdict, onReveal, onLabel, stacked = [] }: O
   frame.append(block);
 
   const restore = () => {
+    clearTimeout(confirmTimer);
     for (const r of restores) r();
     host.remove();
   };

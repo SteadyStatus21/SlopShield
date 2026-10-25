@@ -248,7 +248,7 @@ const io = new IntersectionObserver(
       const st = media.get(m);
       if (!st) continue;
       st.visible = e.intersectionRatio >= VISION.minVisibleRatio;
-      if (st.visible) maybeScan(m);
+      if (st.visible) setTimeout(() => st.visible && maybeScan(m), VISION.dwellMs);
     }
   },
   { threshold: [0, VISION.minVisibleRatio, 1] },
@@ -317,7 +317,7 @@ function discover() {
 }
 
 // Feeds mutate constantly. Sweep at most once per DISCOVER_MIN_GAP_MS, when the page is idle.
-const DISCOVER_MIN_GAP_MS = 1000;
+const DISCOVER_MIN_GAP_MS = 1500;
 let discoverPending = false;
 let lastDiscover = 0;
 const mo = new MutationObserver(() => {

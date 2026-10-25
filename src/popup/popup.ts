@@ -95,6 +95,10 @@ function checkEngine() {
 }
 
 $('version').textContent = `v${chrome.runtime.getManifest().version}`;
+$('setup').addEventListener('click', (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: chrome.runtime.getURL('welcome/welcome.html') });
+});
 checkEngine();
 refresh();
 setInterval(refresh, 1000);
