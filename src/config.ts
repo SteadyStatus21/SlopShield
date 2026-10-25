@@ -51,6 +51,10 @@ export const VISION = {
 // this long with no inference, and re-created on demand.
 export const OFFSCREEN_IDLE_MS = 90_000;
 
+// Verdicts are remembered across page loads only when confident: decided by a platform label, or
+// at least this far from the threshold. Borderline ones get fresh frames next time.
+export const CACHE_MIN_MARGIN = 0.25;
+
 export const MODEL = {
   path: 'models/model.onnx',
   metaPath: 'models/model.json',

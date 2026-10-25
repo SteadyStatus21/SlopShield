@@ -2,7 +2,7 @@
 import { MODEL, VISION } from '../config';
 import { log, warn } from '../log';
 import { getSettings } from '../settings';
-import type { BackendInfo, CaptureResp, ContentMsg, InferResp, LabelResp, ModelMeta, OffscreenMsg, UiMsg } from '../types';
+import type { BackendInfo, CaptureResp, ClearCacheResp, ContentMsg, InferResp, LabelResp, ModelMeta, OffscreenMsg, TabMsg, UiMsg } from '../types';
 import { captureWindow, cropAll, type CropReq } from './capture';
 
 // ---------- model meta (input size for crops) ----------
@@ -227,6 +227,17 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
       case 'GET_STATUS': {
         const { lastCrops } = await chrome.storage.session.get('lastCrops');
         return { backend, lastCrops: lastCrops ?? [] };
+      }
+      case 'CLEAR_CACHE': {
+        // Drop every cached verdict (all models), then have open tabs forget theirs and re-check.
+        const keys = Object.keys(await chrome.storage.session.get(null)).filter((k) => k.startsWith('v:'));
+        await chrome.storage.session.remove(keys);
+        const notice: TabMsg = { kind: 'CACHE_CLEARED' };
+        for (const tab of await chrome.tabs.query({})) {
+          if (tab.id !== undefined) chrome.tabs.sendMessage(tab.id, notice).catch(() => {}); // tabs without our script
+        }
+        log('cache cleared', keys.length);
+        return { cleared: keys.length } satisfies ClearCacheResp;
       }
     }
   };

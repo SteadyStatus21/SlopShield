@@ -1,7 +1,7 @@
 // Mode: Off | Flag | Block; fast mode; GPU opt-in; threshold slider; debug crop.
 import { ENGINE } from '../config';
 import { getSettings, saveSettings } from '../settings';
-import type { BackendInfo, Mode } from '../types';
+import type { BackendInfo, ClearCacheResp, Mode } from '../types';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -65,6 +65,11 @@ $<HTMLInputElement>('threshold').addEventListener('input', (e) => {
 $<HTMLInputElement>('threshold').addEventListener('change', (e) =>
   saveSettings({ threshold: Number((e.target as HTMLInputElement).value) }),
 );
+
+$('flush').addEventListener('click', async () => {
+  const r: ClearCacheResp | null = await chrome.runtime.sendMessage({ kind: 'CLEAR_CACHE' });
+  $('flushMsg').textContent = r ? `Cleared ${r.cleared}. Re-checking…` : 'Could not clear the cache.';
+});
 
 // Desktop engine status, checked directly so it shows even before anything has been scanned.
 function checkEngine() {

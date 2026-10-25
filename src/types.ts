@@ -59,7 +59,11 @@ export type InferResp =
   | { ok: false; error: string };
 
 // popup → sw
-export type UiMsg = { kind: 'GET_STATUS' };
+export type UiMsg = { kind: 'GET_STATUS' } | { kind: 'CLEAR_CACHE' };
+export type ClearCacheResp = { cleared: number };
+
+// sw → content scripts
+export type TabMsg = { kind: 'CACHE_CLEARED' };
 
 export type Msg = ContentMsg | OffscreenMsg | UiMsg;
 

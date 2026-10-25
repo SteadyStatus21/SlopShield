@@ -13,6 +13,8 @@ section { padding: 10px 0; border-top: 1px solid #e5e7eb; }
 .row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .hint { font-size: 11px; color: #6b7280; }
 input[type=range] { width: 100%; }
+#flush { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 13px; cursor: pointer; }
+#flush:hover { background: #f3f4f6; }
 #crops { display: flex; gap: 4px; margin-top: 6px; }
 #crops img { flex: 1; min-width: 0; border: 1px solid #e5e7eb; }
 #crops[hidden] { display: none; }

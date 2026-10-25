@@ -1,8 +1,8 @@
 // Find videos and images (including inside shadow DOM), observe them, run the pipeline, apply overlays.
-import { MEDIA_SELECTOR, VISION } from '../config';
+import { CACHE_MIN_MARGIN, MEDIA_SELECTOR, VISION } from '../config';
 import { log } from '../log';
 import { getSettings, onSettingsChanged } from '../settings';
-import type { CaptureResp, ContentMsg, Label, LabelResp, Settings, Verdict } from '../types';
+import type { CaptureResp, ContentMsg, Label, LabelResp, Settings, TabMsg, Verdict } from '../types';
 import { isOccluded } from './occlusion';
 import { showBadge, showBlock, showDebugTag, type DebugTag, type Overlay, type TagTone } from './overlay';
 import { combine, findCgiContext, findPlatformLabel, gatherText, parentOf, scoreText, trimmedMean } from './signals';
@@ -382,7 +382,7 @@ async function maybeScan(m: Media) {
   log('verdict', m.tagName, key, verdict);
   verdicts.set(key, verdict);
   progress.delete(key);
-  send({ kind: 'CACHE_SET', key, verdict });
+  if (verdict.label || Math.abs(verdict.score - settings.threshold) >= CACHE_MIN_MARGIN) send({ kind: 'CACHE_SET', key, verdict });
   finish(m, st, verdict);
 }
 
@@ -567,6 +567,19 @@ async function init() {
       }
       if (st.status === 'done') render(m, st);
       else if (st.visible) maybeScan(m);
+    }
+  });
+
+  // Popup "Clear cached verdicts": forget every verdict on this page and re-check what's visible.
+  chrome.runtime.onMessage.addListener((msg: TabMsg) => {
+    if (msg.kind !== 'CACHE_CLEARED' || orphaned) return;
+    verdicts.clear();
+    for (const [m, st] of media) {
+      if (st.status === 'scanning') continue; // already producing a fresh verdict
+      progress.delete(st.key);
+      st.overlay?.destroy();
+      Object.assign(st, { status: 'idle', prog: progressFor(st.key), verdict: undefined, overlay: undefined });
+      if (st.visible) maybeScan(m);
     }
   });
 
