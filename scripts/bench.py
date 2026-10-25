@@ -5,6 +5,9 @@ Sets (none are ever trained on):
   video         bench/vidtest: 60 modern AI videos (Veo 3, Veo 3.1, Kling, Sora) + 60 real YouTube clips
   images        bench/aigc: 40 AI + 40 real still images (AIGC-Detection-Benchmark sample)
   games         bench/games: 30 real video-game screenshots (all should be "not AI")
+  shorts        bench/shorts/ai: phone-style AI shorts (ymo2017/ai-shorts-videos), 1/3 of concepts held out
+  pexels        bench/pexels/real: modern real stock video (Pexels), 1/3 of clips held out
+Sets whose folder is missing are skipped (scripts/fetch_training_data.py creates shorts and pexels).
 
 Features come from the frozen backbone (OpenVINO, cached in models/_train/features_ov.npz), so
 evaluating a new head/rule takes seconds. Scoring: per frame, mean tile logit -> probability; per
@@ -78,7 +81,9 @@ def load_sets(extract=None, verbose=True):
         if frames:
             hold[item] = (y, frames)
     sets["user-holdout"] = hold
-    for name, sub in (("video", "vidtest"), ("images", "aigc"), ("games", "games")):
+    for name, sub in (("video", "vidtest"), ("images", "aigc"), ("games", "games"), ("shorts", "shorts"), ("pexels", "pexels")):
+        if not (BENCH / sub).exists():
+            continue
         d = {}
         for p in sorted((BENCH / sub).rglob("*")):
             if p.suffix.lower() not in tl.IMG | tl.VID:
@@ -147,9 +152,12 @@ def fmt(res):
 
 
 def objective(res, fp_weight=4.0):
-    """Higher is better: AI recall minus fp_weight x false-positive rate, pooled over all sets."""
-    ca, na, fr, nr = res["ALL"]
-    return ca / max(1, na) - fp_weight * fr / max(1, nr)
+    """Higher is better: AI recall minus fp_weight x false-positive rate, each averaged over the sets (so a big set
+    like shorts can't drown out the small held-out slice of your own feed)."""
+    sets = [c for name, c in res.items() if name != "ALL"]
+    recall = np.mean([ca / na for ca, na, _, _ in sets if na])
+    fp = np.mean([fr / nr for _, _, fr, nr in sets if nr])
+    return float(recall - fp_weight * fp)
 
 
 def load_head(path):

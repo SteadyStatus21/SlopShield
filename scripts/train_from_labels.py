@@ -8,7 +8,7 @@
   5. Print a held-out scorecard (old vs new, both decision rules) and per-item mistakes.
   6. Back up the current model to models/_ref/backups/<time>/ and install the new one.
 
-    python scripts/train_from_labels.py [--rule agree|head] [--user-weight 4] [--dry-run]
+    python scripts/train_from_labels.py [--rule agree|head] [--user-weight 4] [--user-real-weight 8] [--dry-run]
 
 Then rebuild the extension (npm run build) and restart the engine. train.bat does all of it.
 """
@@ -262,7 +262,9 @@ def main():
     ap = argparse.ArgumentParser(description="Retrain the head from your labels")
     ap.add_argument("--rule", choices=["agree", "head"], default="agree",
                     help="agree: flag only if new head AND base model agree (fewer false alarms); head: new head alone")
-    ap.add_argument("--user-weight", type=float, default=4.0, help="how much more your labels count than the HF set")
+    ap.add_argument("--user-weight", type=float, default=4.0, help="how much more your AI labels count than the public set")
+    ap.add_argument("--user-real-weight", type=float, default=8.0,
+                    help="how much more your 'Not AI' labels count (higher = fewer false alarms on your feed)")
     ap.add_argument("--dry-run", action="store_true", help="train and report, but don't install")
     ap.add_argument("--base-gate", type=float, default=fh.AGREE_BASE_P,
                     help="agree rule: base model must give at least this (lower = catches more, more false alarms)")
@@ -342,9 +344,12 @@ def main():
         y, F, B = user_rows[k]
         X.append(np.hstack([F, B[:, None]]))
         Y.append(np.full(len(B), y))
-        W.append(np.full(len(B), args.user_weight / max(1, len(B)) * 6))  # each item counts like ~6 crops x weight
+        # every crop of your items counts x weight (5-fold CV over your items on Oct 25: AI x4 / real x8 caught
+        # slightly more AI on your feed than x4 / x4, with fewer false alarms)
+        W.append(np.full(len(B), args.user_weight if y else args.user_real_weight))
     X, Y, W = np.vstack(X), np.concatenate(Y), np.concatenate(W)
-    say(f"[4/6] training {args.head} head on {len(Y)} crops ({len(tr_items)} of your items, weight x{args.user_weight:g}) ...")
+    say(f"[4/6] training {args.head} head on {len(Y)} crops ({len(tr_items)} of your items, "
+        f"weight x{args.user_weight:g} AI / x{args.user_real_weight:g} real) ...")
     if args.head == "mlp":
         from sklearn.neural_network import MLPClassifier
 
@@ -391,7 +396,7 @@ def main():
     say(f"      new:     {bench.fmt(new_res)}")
     wins = bench.objective(new_res) > bench.objective(old_res) + 1e-9
     say(f"      -> new model {'WINS' if wins else 'does not beat the current one'} "
-        f"(score {bench.objective(new_res):+.3f} vs {bench.objective(old_res):+.3f}; recall minus 4x false-alarm rate)")
+        f"(score {bench.objective(new_res):+.3f} vs {bench.objective(old_res):+.3f}; recall minus 4x false-alarm rate, averaged per set)")
     if args.dry_run:
         say("[6/6] dry run: nothing installed.")
         return
@@ -406,7 +411,8 @@ def main():
             shutil.copy2(MODELS / name, backup / name)
     say(f"[6/6] backed up current model to {backup.relative_to(ROOT)}; exporting new model ...")
     fh.export(vit, new_head, MODELS, {"hfClips": len(hf_videos), "yourItems": len(tr_items), "heldOut": len(hold_rows),
-                                       "userWeight": args.user_weight, "trainedAt": time.strftime("%Y-%m-%d %H:%M")},
+                                       "userWeight": args.user_weight, "userRealWeight": args.user_real_weight,
+                                       "trainedAt": time.strftime("%Y-%m-%d %H:%M")},
               agree=args.rule == "agree", base_p=args.base_gate)
     say(f"Done in {time.time() - t_start:.0f}s. Installed models/model.onnx ({args.rule} rule).")
     say("Undo: copy the files from the backup folder above back into models/.")
@@ -435,7 +441,7 @@ def git_push(new_res, old_res, n_train, n_hold, args):
         "Retrained model from labels: wins on benchmark",
         "",
         f"Trained on the public set + {n_train} labelled items (held out: {n_hold}); "
-        f"{args.head} head, rule {args.rule}, base gate {args.base_gate:g}, user weight {args.user_weight:g}.",
+        f"{args.head} head, rule {args.rule}, base gate {args.base_gate:g}, user weight {args.user_weight:g} AI / {args.user_real_weight:g} real.",
         "",
         "Benchmark (scripts/bench.py, all held-out sets):",
         f"  before: {bench.fmt(old_res)}",

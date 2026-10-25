@@ -5,7 +5,9 @@
 
 Sources
   AI video    Rapidata Veo 3 / Veo 3.1 / Sora sets, bitmind Kling (more clips than before)
+  AI shorts   ymo2017/ai-shorts-videos: phone-style vertical AI shorts; 1/3 of concepts held out in bench/shorts
   real video  AudioSet balanced + unbalanced (YouTube clips)
+  real modern Pexels stock video (zengxianyu/open-sora-pexels-subset, 4 shards); 1/3 held out in bench/pexels
   AI stills   Thermostatic/frontier-synthetic-images-2026 (FLUX.2, etc.)
   real stills AIGC-Detection-Benchmark real photos, video-game screenshots,
               + locally generated text cards / UI screenshots (meme cards were a false-positive source)
@@ -20,6 +22,7 @@ import hashlib
 import io
 import json
 import random
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -199,6 +202,8 @@ def main():
 
     with ThreadPoolExecutor(8) as ex:
         list(ex.map(get, jobs))
+    fetch_shorts()
+    fetch_pexels()
     say(f"    training clips now: {len(list(TRAIN.glob('1_*.mp4')))} AI, {len(list(TRAIN.glob('0_*.mp4')))} real")
 
     say("[2/4] AI stills (frontier synthetic 2026) ...")
@@ -210,6 +215,72 @@ def main():
     say("[4/4] synthetic text cards / UI screenshots (real negatives) ...")
     synth_cards(args.stills, TRAIN_IMG / "real", rng)
     say(f"stills now: {len(list((TRAIN_IMG / 'ai').glob('*')))} AI, {len(list((TRAIN_IMG / 'real').glob('*')))} real")
+
+
+SHORTS = "ymo2017/ai-shorts-videos"  # AI-generated vertical shorts: phone-style selfies, street scenes, pets
+
+
+def shorts_concept(name):
+    """Versions of one short (-v5, -final, -720x1280, -24fps) share a concept, so they stay on one side of the split."""
+    return re.sub(r"(-v\d+.*|-final.*|-\d+x\d+.*|-\d+fps.*)$", "", name)
+
+
+def fetch_shorts():
+    """Phone-style AI shorts, split by concept: 2/3 -> models/_train/1_shorts_*.mp4, 1/3 -> bench/shorts/ai (held out)."""
+    from huggingface_hub import HfApi
+
+    files = [f for f in HfApi().list_repo_tree(SHORTS, repo_type="dataset", path_in_repo="videos", recursive=True)
+             if getattr(f, "size", None) and f.path.endswith(".mp4") and f.size < 40_000_000]
+    held_dir = BENCH / "shorts" / "ai"
+    held_dir.mkdir(parents=True, exist_ok=True)
+    jobs = []
+    for f in files:
+        name = Path(f.path).name
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+        held = int(hashlib.sha1(shorts_concept(name[:-4]).encode()).hexdigest(), 16) % 3 == 0
+        dst = held_dir / f"ai_shorts_{safe}" if held else TRAIN / f"1_shorts_{safe}"
+        if not dst.exists():
+            jobs.append((f"https://huggingface.co/datasets/{SHORTS}/resolve/main/{urllib.parse.quote(f.path)}", dst))
+    say(f"    downloading {len(jobs)} shorts ...")
+
+    def get(job):
+        try:
+            urllib.request.urlretrieve(*job)
+        except Exception as e:
+            say(f"    fail {job[1].name}: {e}")
+
+    with ThreadPoolExecutor(6) as ex:
+        list(ex.map(get, jobs))
+    say(f"    shorts: {len(list(TRAIN.glob('1_shorts_*.mp4')))} for training, {len(list(held_dir.glob('*.mp4')))} held out")
+
+
+PEXELS = "zengxianyu/open-sora-pexels-subset"  # real stock video (Pexels, crawled early 2024), WebDataset shards
+PEXELS_SHARDS = ["videos/5000_0_shard_0000.tar", "videos/5000_0_shard_0020.tar", "videos/5000_1_shard_0010.tar",
+                 "videos/5000_1_shard_0040.tar"]
+
+
+def fetch_pexels():
+    """Modern real video (stock footage, ~40% vertical), split by clip: 2/3 -> models/_train/0_pexels_*.mp4,
+    1/3 -> bench/pexels/real (held out). Only .mp4 members are read, by basename."""
+    import tarfile
+
+    held_dir = BENCH / "pexels" / "real"
+    held_dir.mkdir(parents=True, exist_ok=True)
+    for shard in PEXELS_SHARDS:
+        tmp = TRAIN / Path(shard).name
+        say(f"    pexels {shard} ...")
+        urllib.request.urlretrieve(f"https://huggingface.co/datasets/{PEXELS}/resolve/main/{shard}", tmp)
+        with tarfile.open(tmp) as tf:
+            for m in tf:
+                if not (m.isfile() and m.name.lower().endswith(".mp4")) or m.size > 40_000_000:
+                    continue
+                vid = re.sub(r"[^A-Za-z0-9_-]", "_", Path(m.name).stem)[:60]
+                held = int(hashlib.sha1(vid.encode()).hexdigest(), 16) % 3 == 0
+                dst = held_dir / f"real_pexels_{vid}.mp4" if held else TRAIN / f"0_pexels_{vid}.mp4"
+                if not dst.exists():
+                    dst.write_bytes(tf.extractfile(m).read())
+        tmp.unlink()
+    say(f"    pexels: {len(list(TRAIN.glob('0_pexels_*.mp4')))} for training, {len(list(held_dir.glob('*.mp4')))} held out")
 
 
 def fetch_real_photos(n, bad, rng):
