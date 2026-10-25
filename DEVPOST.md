@@ -28,18 +28,18 @@ Platform "AI info" labels exist, but most AI posts don't carry one. We wanted so
 
 The engine is a small Python app on `127.0.0.1` that only accepts our extension's origin; if it's not running, the extension falls back to WebGPU automatically.
 
-**Measuring honestly.** `scripts/bench.py` scores every candidate model exactly the way the extension does, on sets it never trained on: 60 modern AI + 60 real YouTube videos, 241 phone-style AI shorts, 88 real stock videos, 80 still images, 30 video-game screenshots, and a held-out slice of our own labelled feed.
+**Measuring honestly.** `scripts/bench.py` scores every candidate model exactly the way the extension does, on sets it never trained on: 60 modern AI + 60 real YouTube videos, 241 phone-style AI shorts, 183 clips from the newest generators (Seedance 1.5 Pro, Kling 2.5), 198 real stock videos, 80 still images, 30 video-game screenshots, and a held-out slice of our own labelled feed.
 
 ## Results (held-out, threshold 0.6)
 
-| | Modern AI videos caught | Phone-style AI shorts caught | Real videos flagged | Real stock videos flagged | Real photos flagged | Game screenshots flagged |
-|---|---|---|---|---|---|---|
-| Our first model (SigLIP) | — | — | — | — | 2/40 | **16/30** |
-| Off-the-shelf CommunityForensics | 14/60 | — | 0/60 | — | 0/40 | 0/30 |
-| Frontier base model alone | 57/60 | 81/241 | **12/60** | 5/88 | 0/40 | 0/30 |
-| **SlopShield** | **54/60** | **207/241** | **1/60** | **3/88** | **0/40** | **0/30** |
+| | Modern AI videos caught | Phone-style AI shorts caught | Newest generators caught | Real videos flagged | Real stock videos flagged | Real photos flagged | Game screenshots flagged |
+|---|---|---|---|---|---|---|---|
+| Our first model (SigLIP) | — | — | — | — | — | 2/40 | **16/30** |
+| Off-the-shelf CommunityForensics | 14/60 | — | — | 0/60 | — | 0/40 | 0/30 |
+| Frontier base model alone | 57/60 | 81/241 | 163/183 | **12/60** | 19/198 | 0/40 | 0/30 |
+| **SlopShield** | **54/60** | **207/241** | **162/183** | **1/60** | **13/198** | **0/40** | **0/30** |
 
-On our own feed (115 posts we labelled on Instagram, X and Facebook, cross-validated) it catches about 64% of the AI posts and flags about 9% of the real ones. Ordinary phone-style AI is the hardest case, which is why we spent the last night adding 470 phone-style AI shorts and 200 modern real videos to training: held-out shorts went from 43% caught to 86%, while false alarms on modern real footage dropped from 11 of 88 to 3.
+On our own feed (115 posts we labelled on Instagram, X and Facebook, cross-validated) it catches about 64% of the AI posts and flags about 9% of the real ones. Ordinary phone-style AI is the hardest case, which is why we spent the last night adding 470 phone-style AI shorts and 200 modern real videos to training: held-out shorts went from 43% caught to 86%, while false alarms on modern real stock footage halved (26 of 198 to 13).
 
 ## Challenges we ran into
 
@@ -52,7 +52,7 @@ On our own feed (115 posts we labelled on Instagram, X and Facebook, cross-valid
 
 ## Accomplishments that we're proud of
 
-- Catching **54 of 60** modern AI videos and **207 of 241** phone-style AI shorts while flagging **1 of 60** real videos, **3 of 88** real stock videos, **0 of 40** real photos and **0 of 30** game screenshots — on a laptop iGPU, with no cloud. Overall: **288/355 AI caught, 6/228 real items flagged** across every held-out set.
+- Catching **54 of 60** modern AI videos, **207 of 241** phone-style AI shorts and **162 of 183** clips from the newest generators, while flagging **1 of 60** real videos, **13 of 198** real stock videos, **0 of 40** real photos and **0 of 30** game screenshots — on a laptop iGPU, with no cloud. Overall: **450/538 AI caught, 16/338 real items flagged** across every held-out set.
 - A real human-in-the-loop: label in the feed → retrain in ~1 minute → auto-install only if the benchmark improves → auto-commit to GitHub.
 - Every number above comes from a reproducible benchmark script, not a demo cherry-pick.
 

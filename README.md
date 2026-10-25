@@ -19,7 +19,7 @@ For each video or image that is at least half on screen (including ones inside s
 
 1. **Platform labels.** Looks for "AI info", "Made with AI", "Altered or synthetic content" and similar in the post around the video. A label is decisive, so no inference runs.
 2. **Text cues.** Scores hashtags (`#sora`, `#veo3`, `#aivideo` …) and caption keywords, combined with noisy-OR. In **fast mode** the pipeline stops here.
-3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, trims flat letterbox/padding bars, and cuts up to 3 square tiles along the long side so the whole post is covered. The desktop engine (OpenVINO) or, if it isn't running, the offscreen document (WebGPU, then WASM) runs the ONNX model, a 22M-param ViT-S (Community Forensics frontier model, Aug 2026) with a decision head SlopShield trained on modern AI video, phone-style AI shorts and real footage (see `MODEL.md`: across the held-out sets it catches 288/355 AI items, including 54/60 modern AI videos and 207/241 phone-style AI shorts, and flags 6/228 real ones). Tiles are averaged per frame and frames are combined with a trimmed mean.
+3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, trims flat letterbox/padding bars, and cuts up to 3 square tiles along the long side so the whole post is covered. The desktop engine (OpenVINO) or, if it isn't running, the offscreen document (WebGPU, then WASM) runs the ONNX model, a 22M-param ViT-S (Community Forensics frontier model, Aug 2026) with a decision head SlopShield trained on modern AI video, phone-style AI shorts and real footage (see `MODEL.md`: across the held-out sets it catches 450/538 AI items, including 54/60 modern AI videos, 207/241 phone-style AI shorts and 162/183 clips from the newest generators, and flags 16/338 real ones). Tiles are averaged per frame and frames are combined with a trimmed mean.
 4. **Combine.** A weighted score (`WEIGHTS` in `src/config.ts`) is compared with your threshold. Every verdict comes with `reasons[]`, which the badge or overlay shows.
 
 Verdicts are cached per video (`currentSrc`, or page URL + index for MediaSource players), so a video is never scanned twice.
@@ -102,12 +102,13 @@ This prints per-clip scores, precision/recall/F1 and the confusion matrix.
 |---|---|---|---|---|
 | Modern AI video (Sora, Veo 3, Veo 3.1, Kling) vs. real YouTube/AudioSet clips | 120 | 0.98 | 0.90 | 0.94 |
 | Phone-style AI shorts ([ai-shorts-videos](https://huggingface.co/datasets/ymo2017/ai-shorts-videos), held out by concept), all AI | 241 | — | 0.86 | 207/241 caught |
-| Modern real stock video ([Pexels](https://huggingface.co/datasets/zengxianyu/open-sora-pexels-subset), held out), all real | 88 | — | — | 3/88 flagged |
+| Current-gen AI video (Seedance 1.5 Pro, Kling 2.5 Turbo; held out by prompt), all AI | 183 | — | 0.89 | 162/183 caught |
+| Modern real stock video ([Pexels](https://huggingface.co/datasets/zengxianyu/open-sora-pexels-subset), held out), all real | 198 | — | — | 13/198 flagged |
 | [AIGC-Detection-Benchmark](https://huggingface.co/datasets/TheKernel01/AIGC-Detection-Benchmark) random sample, still images (40 real / 40 AI, 14 generators) | 80 | 1.00 | 0.53 | 0.69 |
 | Video-game screenshots ([game_screenshots_11k](https://huggingface.co/datasets/badigadiii/game_screenshots_11k)), all not-AI | 30 | — | — | 0/30 flagged |
 | Held-out slice of our own labelled feed (Instagram/X/Facebook) | 24 | 0.75 | 0.43 | 0.55 |
 
-Measured Oct 25, 2026 with `python scripts/bench.py` (the same tiling, trimming and decision rule as the extension) at threshold 0.6. Overall: 288/355 AI caught, 6/228 real items flagged. The model gives up some recall on older still-image generators (it was tuned on video). The previous model (SigLIP-B) flagged **16/30 game screenshots** as AI; `MODEL.md` has the full comparison. Samples are small.
+Measured Oct 25, 2026 with `python scripts/bench.py` (the same tiling, trimming and decision rule as the extension) at threshold 0.6. Overall: 450/538 AI caught, 16/338 real items flagged. The model gives up some recall on older still-image generators (it was tuned on video). The previous model (SigLIP-B) flagged **16/30 game screenshots** as AI; `MODEL.md` has the full comparison. Samples are small.
 
 **Video games and CGI.** The first model called rendered graphics "AI" on every frame, so more frames only made it more confident. Switching models fixed most of this (0/30 game screenshots flagged). As a second safeguard, SlopShield detects gameplay/CGI context (game titles, "gameplay", engine names, "CGI", "3D render"…) and skips the image model there, judging those videos on labels and text only.
 

@@ -6,7 +6,7 @@ HackPSU Fall 2026. **Submission due Sun Oct 25, 12:00 PM** (hacking ends 1:45 PM
 
 - Extension works end to end in Helium: finds images/videos (incl. shadow DOM), tiles crops, scores on WebGPU (~150 ms/frame on Iris Xe, verified identical to CPU), flags or blocks, debug tags, ~2 fps budget with jank back-off.
 - Detector: frontier ViT-S + our social-video head, "both must agree" rule (`MODEL.md`).
-  Held-out (Oct 25, 04:35): 288/355 AI caught, 6/228 real flagged; 54/60 AI videos, 207/241 phone-style AI shorts; 1/60 real videos, 3/88 real stock videos, 0/40 photos, 0/30 games flagged. Feed CV: 43/68 AI, 4/47 real.
+  Held-out (Oct 25, 04:35 model, 7 sets): 450/538 AI caught, 16/338 real flagged; 54/60 AI videos, 207/241 phone-style AI shorts, 162/183 newest-generator clips; 1/60 real videos, 13/198 real stock videos, 0/40 photos, 0/30 games flagged. Feed CV: 43/68 AI, 4/47 real.
 - Captions are a weak nudge only; just platform badges are decisive.
 - Repo: github.com/SteadyStatus21/SlopShield (commit + push every change, author SteadyStatus21, Claude co-author).
 
@@ -44,6 +44,8 @@ Benchmark: `python scripts/bench.py` scores a head on every held-out set exactly
 | *New sets added (241 held-out AI shorts, 88 held-out Pexels real): same model* | 187/355 | 13/228 |
 | + phone-style AI shorts, Pexels real video, "Not AI" labels x8 | 229/355 | 5/228 |
 | **+ base veto 0.05 → 0.002 — installed** | **288/355** | **6/228** (feed CV: AI 43.3/68, real 4.0/47) |
+| *More held-out sets (183 current-gen AI, Pexels 88 → 198): installed model* | 450/538 | 16/338 |
+| + training on the current-gen clips and extra Pexels (CV) | feed +0.7/68 | feed +1.0/47 — not adopted |
 
 Findings → fixes so far:
 - Held-out false positives included carousel photos with big black padding and a meme crop with our
@@ -60,7 +62,7 @@ Findings → fixes so far:
 
 ## Priority 3 — submission (keep ≥3 h before noon for this)
 
-- [x] `demo/videos/` + `demo/clips.js`: 11 held-out bench clips (5 AI, 6 real incl. a cartoon), captions written to match; mapping in `clips.js`. Serve with `python -m http.server 8765 --bind 127.0.0.1`, open http://127.0.0.1:8765/demo/.
+- [x] `demo/videos/` + `demo/clips.js`: 13 held-out bench clips (7 AI incl. 2 phone-style shorts the previous model missed, 6 real incl. a cartoon), captions written to match; mapping in `clips.js`. Serve with `python -m http.server 8765 --bind 127.0.0.1`, open http://127.0.0.1:8765/demo/.
 - [ ] README: problem statement with sources, final eval tables (from `MODEL.md`), limitations, setup.
 - [ ] ≤5 min video: problem → live scroll on demo feed/X → block → Wi-Fi off → numbers → limitations → next steps.
 - [ ] Devpost write-up.

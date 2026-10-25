@@ -35,13 +35,14 @@ Held-out (never trained on), threshold 0.6, `python scripts/bench.py`:
 | Modern AI video caught (60: Sora/Veo3/Veo3.1/Kling) | 14 | 57 | 54 | **54** |
 | Real video flagged (60, AudioSet) | 0 | 12 | 1 | **1** |
 | Phone-style AI shorts caught (241, held out by concept) | — | 81 | 232 | **207** |
-| Modern real stock video flagged (88, Pexels) | — | 5 | 3 | **3** |
+| Current-gen AI video caught (183: Seedance 1.5 Pro, Kling 2.5 Turbo; held out by prompt) | — | 163 | 163 | **162** |
+| Modern real stock video flagged (198, Pexels) | — | 19 | 13 | **13** |
 | AI still images caught (40, AIGC benchmark) | 34 | 30 | 21 | 21 |
 | Real photos flagged (40) | 0 | 0 | 1 | **0** |
 | Game screenshots flagged (30) | 0 | 0 | 0 | **0** |
 | User's in-the-wild AI caught (14, held-out labels) | — | 6 | 8 | 6 |
 | User's in-the-wild real flagged (10, held-out labels) | — | 3 | 2 | 2 |
-| **All sets** | — | 174/355 AI, 20/228 real | 315/355, 7/228 | **288/355, 6/228** |
+| **All sets** | — | 337/538 AI, 34/338 real | 478/538, 17/338 | **450/538, 16/338** |
 
 The 24 held-out feed items are too few to steer by, so recipe decisions used 5-fold cross-validation over all 115
 labelled feed items (3 seeds, every item scored out-of-fold). Shipped recipe: 43.3/68 AI caught, 4.0/47 real flagged.
@@ -50,12 +51,14 @@ Previous recipe (no shorts/Pexels, labels x4/x4, gate 0.05): 37.3/68 and 4.0/47.
 Also tried on Oct 25 and rejected (same cross-validation): weighting all labels 8x or 16x; averaging head and base
 logits instead of `min`; thresholds 0.4-0.8; ensembles of 2-6 MLP seeds; multi-layer backbone features (CLS tokens of
 blocks 3/6/9, mean patch token); cropping the bottom 12-30% of each tile to drop player controls; the low-quality
-continuation of the base model as backbone; Smaug as a second opinion. None beat the shipped setup.
+continuation of the base model as backbone; Smaug as a second opinion; training on the current-gen clips and 4 more
+Pexels shards (+0.7/68 AI caught on the feed for +1.0/47 real flagged, so they only feed the benchmark). None beat
+the shipped setup.
 
 How we got here (pooled over the original 4 sets, 114 AI / 140 real): first head 77/114 AI with 7/140 real flagged;
-border-trimmed crops 75/6; expanded data + logistic head 79/2; MLP head 84/2. Then on all 6 sets (355 AI / 228 real):
-that model 187/13; + phone-style AI shorts, Pexels real video and x8 "Not AI" labels 229/5; base veto lowered from
-0.05 to 0.002 288/6.
+border-trimmed crops 75/6; expanded data + logistic head 79/2; MLP head 84/2. Then on all 7 sets (538 AI / 338 real):
+that model 354/28; + phone-style AI shorts, Pexels real video and x8 "Not AI" labels 391/13; base veto lowered from
+0.05 to 0.002 450/16.
 
 ## How it was chosen (measured Oct 24, 2026)
 
