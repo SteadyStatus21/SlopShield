@@ -17,8 +17,13 @@
     "ai (sigmoid)"
   ],
   "inputName": "pixel_values",
+  "head": "mlp",
   "rule": "min(head, base-0.740+3.350): head>=0.6 AND base>=0.05",
   "trainedOn": {
-    "reexported": "2026-10-24 23:21"
+    "hfClips": 1299,
+    "yourItems": 91,
+    "heldOut": 24,
+    "userWeight": 4.0,
+    "trainedAt": "2026-10-25 00:48"
   }
 }
