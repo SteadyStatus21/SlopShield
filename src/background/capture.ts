@@ -54,6 +54,44 @@ function tiles(b: Box, meta: ModelMeta): Box[] {
   return out;
 }
 
+/**
+ * Shrink a box to its content by dropping flat rows/columns at the edges (near-constant colour).
+ * Keep in sync with trim_borders() in scripts/train_from_labels.py.
+ */
+export function trimBorders(bitmap: ImageBitmap, b: Box): Box {
+  const N = 64; // analyse a small copy
+  const cw = Math.max(8, Math.round((N * b.w) / Math.max(b.w, b.h)));
+  const ch = Math.max(8, Math.round((N * b.h) / Math.max(b.w, b.h)));
+  const ctx = new OffscreenCanvas(cw, ch).getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(bitmap, b.x, b.y, b.w, b.h, 0, 0, cw, ch);
+  const px = ctx.getImageData(0, 0, cw, ch).data;
+  const luma = (x: number, y: number) => {
+    const i = (y * cw + x) * 4;
+    return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+  };
+  const flat = (vals: number[]) => {
+    const m = vals.reduce((a, v) => a + v, 0) / vals.length;
+    return Math.sqrt(vals.reduce((a, v) => a + (v - m) * (v - m), 0) / vals.length) < TRIM_FLAT_STD;
+  };
+  const col = (x: number) => flat(Array.from({ length: ch }, (_, y) => luma(x, y)));
+  const row = (y: number) => flat(Array.from({ length: cw }, (_, x) => luma(x, y)));
+  let l = 0, r = cw - 1, t = 0, btm = ch - 1;
+  while (l < r && col(l)) l++;
+  while (r > l && col(r)) r--;
+  while (t < btm && row(t)) t++;
+  while (btm > t && row(btm)) btm--;
+  const kw = (r - l + 1) / cw, kh = (btm - t + 1) / ch;
+  if (kw * kh < 0.25 || (kw > 0.97 && kh > 0.97)) return b; // nothing to trim, or (almost) all flat
+  return {
+    x: b.x + Math.round((l / cw) * b.w),
+    y: b.y + Math.round((t / ch) * b.h),
+    w: Math.round(kw * b.w),
+    h: Math.round(kh * b.h),
+  };
+}
+
+const TRIM_FLAT_STD = 6;
+
 async function cropOne(bitmap: ImageBitmap, req: CropReq, meta: ModelMeta): Promise<CropResult> {
   const { size } = meta;
   // Derive the scale from the screenshot itself rather than devicePixelRatio alone:
@@ -73,8 +111,11 @@ async function cropOne(bitmap: ImageBitmap, req: CropReq, meta: ModelMeta): Prom
   const sh = Math.min(bitmap.height - sy, Math.round(h * scale));
   if (sw <= 0 || sh <= 0) return { ok: false, reason: 'offscreen' };
 
+  // Letterbox / pillarbox / carousel padding: flat bars around the actual picture. The model never saw
+  // half-black training images, so they were a source of false positives. Score only the content.
+  const content = trimBorders(bitmap, { x: sx, y: sy, w: sw, h: sh });
   const dataUrls: string[] = [];
-  for (const t of tiles({ x: sx, y: sy, w: sw, h: sh }, meta)) {
+  for (const t of tiles(content, meta)) {
     const canvas = new OffscreenCanvas(size, size);
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
     ctx.drawImage(bitmap, t.x, t.y, t.w, t.h, 0, 0, size, size);

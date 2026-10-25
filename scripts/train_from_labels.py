@@ -83,8 +83,29 @@ class Extractor:
         return out[:-1].astype(np.float32), float(out[-1])
 
 
-def tiles(img: Image.Image):
-    """Same square tiles the extension scores (background/capture.ts tiles())."""
+def trim_borders(img: Image.Image, flat_std: float = 6.0) -> Image.Image:
+    """Drop flat rows/columns at the edges (letterbox/pillarbox/padding). Mirrors capture.ts trimBorders()."""
+    w, h = img.size
+    n = 64
+    cw, ch = max(8, round(n * w / max(w, h))), max(8, round(n * h / max(w, h)))
+    a = np.asarray(img.convert("RGB").resize((cw, ch), Image.BILINEAR), np.float32)
+    y = 0.299 * a[..., 0] + 0.587 * a[..., 1] + 0.114 * a[..., 2]
+    colf, rowf = y.std(0) < flat_std, y.std(1) < flat_std
+    l, r, t, b = 0, cw - 1, 0, ch - 1
+    while l < r and colf[l]: l += 1
+    while r > l and colf[r]: r -= 1
+    while t < b and rowf[t]: t += 1
+    while b > t and rowf[b]: b -= 1
+    kw, kh = (r - l + 1) / cw, (b - t + 1) / ch
+    if kw * kh < 0.25 or (kw > 0.97 and kh > 0.97):
+        return img
+    return img.crop((round(l / cw * w), round(t / ch * h), round(l / cw * w) + round(kw * w), round(t / ch * h) + round(kh * h)))
+
+
+def tiles(img: Image.Image, trim: bool = True):
+    """Same square tiles the extension scores (background/capture.ts trimBorders() + tiles())."""
+    if trim:
+        img = trim_borders(img)
     w, h = img.size
     short, long = min(w, h), max(w, h)
     side = round(short * fh.SIZE / fh.SHORT)
