@@ -238,4 +238,15 @@ chrome.runtime.onMessage.addListener((msg: ContentMsg | UiMsg | OffscreenMsg, se
   return true;
 });
 
-chrome.runtime.onInstalled.addListener(() => log('installed'));
+// After an install/update/reload, tabs that were already open still run the old (now orphaned)
+// content script, which shuts itself down. Inject the new one so they keep working without F5.
+chrome.runtime.onInstalled.addListener(async () => {
+  log('installed');
+  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  for (const tab of tabs) {
+    if (tab.id === undefined || tab.discarded) continue;
+    chrome.scripting
+      .executeScript({ target: { tabId: tab.id }, files: ['content/index.js'] })
+      .catch(() => {}); // e.g. the web store or other pages extensions may not script
+  }
+});
