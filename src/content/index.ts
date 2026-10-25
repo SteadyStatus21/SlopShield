@@ -72,16 +72,19 @@ function note(m: Media, st: VState, text: string, tone: TagTone = 'info') {
 }
 
 // Debug tags are placed next to their item, which can be on top of a neighbouring item; one ended
-// up inside a crop the model scored. Hide every tag on the page while any capture is in flight.
-let capturesInFlight = 0;
+// up inside a crop the model scored. The service worker asks us to hide every tag just for the
+// moment of each screenshot (UI_HIDE), so they blink briefly instead of vanishing for the whole
+// request. The safety timer brings them back if the "show" message never arrives.
+let tagsShowTimer: ReturnType<typeof setTimeout> | undefined;
 
-async function capture(msg: Extract<ContentMsg, { kind: 'CAPTURE_REQ' }>): Promise<CaptureResp | null> {
-  if (capturesInFlight++ === 0) for (const st of media.values()) st.tag?.hide(true);
-  try {
-    return await send<CaptureResp>(msg);
-  } finally {
-    if (--capturesInFlight === 0) for (const st of media.values()) st.tag?.hide(false);
-  }
+function hideTags(hide: boolean) {
+  clearTimeout(tagsShowTimer);
+  for (const st of media.values()) st.tag?.hide(hide);
+  if (hide) tagsShowTimer = setTimeout(() => hideTags(false), 1500);
+}
+
+function capture(msg: Extract<ContentMsg, { kind: 'CAPTURE_REQ' }>): Promise<CaptureResp | null> {
+  return send<CaptureResp>(msg);
 }
 
 /**
@@ -570,9 +573,17 @@ async function init() {
     }
   });
 
-  // Popup "Clear cached verdicts": forget every verdict on this page and re-check what's visible.
-  chrome.runtime.onMessage.addListener((msg: TabMsg) => {
-    if (msg.kind !== 'CACHE_CLEARED' || orphaned) return;
+  chrome.runtime.onMessage.addListener((msg: TabMsg, _sender, sendResponse) => {
+    if (orphaned) return;
+    if (msg.kind === 'UI_HIDE') {
+      hideTags(msg.hide);
+      if (!msg.hide) return;
+      // Reply once a frame without the tags has been painted, so the screenshot can't catch them.
+      requestAnimationFrame(() => requestAnimationFrame(() => sendResponse(true)));
+      return true;
+    }
+    // Popup "Clear cached verdicts": forget every verdict on this page and re-check what's visible.
+    if (msg.kind !== 'CACHE_CLEARED') return;
     verdicts.clear();
     for (const [m, st] of media) {
       if (st.status === 'scanning') continue; // already producing a fresh verdict
