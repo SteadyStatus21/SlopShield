@@ -8,7 +8,8 @@ Platform "AI info" labels exist, but most AI posts don't carry one. We wanted so
 
 **SlopShield** is a Chrome/Chromium extension (plus an optional desktop engine) that scans the images and videos you scroll past on Instagram, X, Reddit, YouTube or any site, and:
 
-- **Flags** likely-AI media with a badge, or **blocks** it (blur + pause) with a one-line explanation and a "Show anyway" button.
+- **Warns** about likely-AI media with a big red banner and outline, or **blocks** it: blurred, paused and hidden behind a warning that takes two deliberate clicks to dismiss ("Show anyway" → "Yes, I understand").
+- Sets itself up in plain language: on install, a welcome page walks you through the optional desktop helper (with a live "connected" check) and asks whether you want warnings or blocking.
 - Runs **100% on your device.** Frames are cropped and scored locally; nothing is uploaded.
 - Lets you **correct it with one click** ("Yes, AI" / "Not AI"). Each click saves that item as a labelled example, and `train.bat` retrains the detector from your labels in about a minute — but only installs (and pushes) the new model if it beats the old one on a held-out benchmark.
 
@@ -46,7 +47,7 @@ On our own feed (115 posts we labelled on Instagram, X and Facebook, cross-valid
 - **Video games and CGI** look "synthetic" to image detectors on every frame — our first model flagged 16 of 30 game screenshots. Fixed by switching models and requiring two models to agree.
 - **Instagram Reels fought back.** Pausing a blocked reel made Instagram call `play()` again: ~4,500 play events per second per blocked reel, which made the browser unusable. We now pause once, mute, and hide instead of fighting.
 - **Thumbnails vs. videos.** Instagram stacks a poster image under every reel; we were blocking the poster while the real video played on top.
-- **Our own UI leaked into the model's input:** a debug tag inside one crop, and black carousel padding in others both caused false positives. Now tags hide during capture and flat borders are trimmed.
+- **Our own UI leaked into the model's input:** a debug tag inside one crop, and black carousel padding in others both caused false positives. Now the capture area skips our own labels and flat borders are trimmed.
 - **GPU backends lie.** DirectML on Iris Xe returned the same number for every image; we verified each backend (WebGPU, OpenVINO) against CPU outputs before trusting it.
 - **Captions are unreliable** in both directions ("AI farm of phones" on real footage; AI videos with no caption at all), so only real platform badges can override the vision model.
 
