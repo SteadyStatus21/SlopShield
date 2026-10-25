@@ -19,7 +19,7 @@ For each video or image that is at least half on screen (including ones inside s
 
 1. **Platform labels.** Looks for "AI info", "Made with AI", "Altered or synthetic content" and similar in the post around the video. A label is decisive, so no inference runs.
 2. **Text cues.** Scores hashtags (`#sora`, `#veo3`, `#aivideo` …) and caption keywords, combined with noisy-OR. In **fast mode** the pipeline stops here.
-3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, center-crops to the model's input (384 px), and the offscreen document runs the ONNX model, a 22M-param ViT-S (Community Forensics frontier model, Aug 2026) with a head SlopShield trained on modern AI video, flagging only when both agree (see `MODEL.md`: 57/60 modern AI videos caught; 2 false alarms across 140 held-out real videos, photos, game screenshots and labelled feed items). Frames are combined with a trimmed mean.
+3. **Vision.** Takes up to 6 frames of a video, 0.5 s apart (1 for an image), while it is visible. The service worker calls `captureVisibleTab`, crops to the video, trims flat letterbox/padding bars, and cuts up to 3 square tiles along the long side so the whole post is covered. The desktop engine (OpenVINO) or, if it isn't running, the offscreen document (WebGPU, then WASM) runs the ONNX model, a 22M-param ViT-S (Community Forensics frontier model, Aug 2026) with a head SlopShield trained on modern AI video, flagging only when both agree (see `MODEL.md`: 57/60 modern AI videos caught; 2 false alarms across 140 held-out real videos, photos, game screenshots and labelled feed items). Tiles are averaged per frame and frames are combined with a trimmed mean.
 4. **Combine.** A weighted score (`WEIGHTS` in `src/config.ts`) is compared with your threshold. Every verdict comes with `reasons[]`, which the badge or overlay shows.
 
 Verdicts are cached per video (`currentSrc`, or page URL + index for MediaSource players), so a video is never scanned twice.
@@ -119,7 +119,7 @@ Measured Oct 25, 2026 with `python scripts/bench.py` (the same tiling, trimming 
 
 ## Limitations
 
-- Tested on the local demo feed and YouTube. It runs on any site (Facebook, Instagram, X, TikTok web, Reddit), but those aren't tested.
+- Tested mostly on Instagram (feed and Reels), X, Facebook and Reddit, plus the local demo feed. On 115 items we labelled from those feeds (5-fold cross-validated), it catches 39/68 AI items and flags 3/47 real ones: ordinary phone-style AI clips are the hardest case.
 - Without WebGPU, a frame takes ~1.6 s on the CPU, so a busy feed is scanned gradually. With WebGPU the ~2 screenshots/sec quota is the limit.
 
 - Image-trained detectors have a domain gap on compressed video frames and on newer generators. Expect false positives and false negatives, and treat the score as a warning, not proof.
@@ -131,7 +131,7 @@ Measured Oct 25, 2026 with `python scripts/bench.py` (the same tiling, trimming 
 
 ## Next steps
 
-Parent mode (PIN-protected "Show anyway" and off switch), a per-site allowlist, and session stats in the popup. Video-native detection (temporal artifacts), a smaller distilled model, more languages for labels, a mobile build, and user feedback to correct verdicts.
+Parent mode (PIN-protected "Show anyway" and off switch), a per-site allowlist, and session stats in the popup. Video-native detection (temporal artifacts), a smaller distilled model, more languages for labels, and a mobile build. (One-click feedback that feeds retraining is already in: see Labeling above.)
 
 ## Project layout
 
