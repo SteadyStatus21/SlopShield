@@ -201,7 +201,7 @@ export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
   const style = el('style');
   style.textContent = css;
   const tag = el('div', 'dbg');
-  const text = el('span');
+  const text = el('span', 'dbgtext');
   tag.append(text);
   // Debug/labeling mode: label any scanned item, including misses the model let through.
   if (onLabel) {
@@ -233,11 +233,12 @@ export function showDebugTag(media: HTMLElement, onLabel?: OnLabel): DebugTag {
     const below = r.bottom + 2;
     tag.style.left = `${Math.max(0, r.left)}px`;
     tag.style.top = `${above >= 0 ? above : below + h <= innerHeight ? below : Math.max(0, r.bottom - h)}px`;
-    tag.style.maxWidth = `${Math.max(160, r.width)}px`;
+    tag.style.maxWidth = `${Math.max(260, r.width)}px`;
   };
   return {
     set(t, tone) {
       text.textContent = `🛡 ${t}`;
+      text.title = t; // full text on hover when it's cut off
       tag.className = `dbg ${tone}`;
       update();
     },
