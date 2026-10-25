@@ -16,7 +16,7 @@ Platform "AI info" labels exist, but most AI posts don't carry one. We wanted so
 
 **Extension (TypeScript, Manifest V3).** A content script finds media (including inside Reddit's shadow DOM), watches what's actually on screen, and requests frames. The service worker captures the visible tab, trims letterbox/padding bars, cuts each item into square tiles that cover the whole post, and batches them for inference. Overlays live in shadow DOM so they never break the page.
 
-**Detector.** A ViT-S/16 trained on images from 4,800+ generators ([Community Forensics](https://huggingface.co/papers/2411.04125), CVPR 2025, frontier fine-tune from Aug 2026), plus a decision head we trained ourselves on modern AI video (Veo 3, Veo 3.1, Kling, Sora) vs. real video, with frames degraded to look like reposted social-media video, and on the user's own labels. It only flags when the head **and** the base model agree, which is what keeps false alarms down.
+**Detector.** A ViT-S/16 trained on images from 4,800+ generators ([Community Forensics](https://huggingface.co/papers/2411.04125), CVPR 2025, frontier fine-tune from Aug 2026), plus a small neural-network decision head we trained ourselves on ~15k crops of modern AI video (Veo 3, Veo 3.1, Kling, Sora) vs. real video, with frames degraded to look like reposted social-media video, real photos, game screenshots, generated text/meme cards, and the user's own labels. It only flags when the head **and** the base model agree, which is what keeps false alarms down.
 
 **Fast on a normal laptop.** Our minimum spec is an i7-12700H with Intel Iris Xe graphics:
 
@@ -37,7 +37,7 @@ The engine is a small Python app on `127.0.0.1` that only accepts our extension'
 | Our first model (SigLIP) | — | — | 2/40 | **16/30** |
 | Off-the-shelf CommunityForensics | 14/60 | 0/60 | 0/40 | 0/30 |
 | Frontier base model alone | 57/60 | **12/60** | 0/40 | 0/30 |
-| **SlopShield (head + agreement rule)** | **56/60** | **4/60** | **0/40** | **1/30** |
+| **SlopShield (MLP head + agreement rule)** | **57/60** | **1/60** | **0/40** | **0/30** |
 
 On our own in-the-wild feed (held-out labels) it still misses about half of the AI clips — modern generators reposted through Instagram/X are the hardest case, and that's exactly what the labelling loop is for.
 
@@ -52,7 +52,7 @@ On our own in-the-wild feed (held-out labels) it still misses about half of the 
 
 ## Accomplishments that we're proud of
 
-- Catching **56 of 60** modern AI videos while flagging **0 of 40** real photos, on a laptop iGPU, with no cloud.
+- Catching **57 of 60** modern AI videos while flagging **1 of 60** real videos, **0 of 40** real photos and **0 of 30** game screenshots — on a laptop iGPU, with no cloud. Overall: **84/114 AI caught, 2/140 real items flagged** across every held-out set.
 - A real human-in-the-loop: label in the feed → retrain in ~1 minute → auto-install only if the benchmark improves → auto-commit to GitHub.
 - Every number above comes from a reproducible benchmark script, not a demo cherry-pick.
 
