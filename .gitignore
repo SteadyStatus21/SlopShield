@@ -16,3 +16,4 @@ engine/last_crops/
 train.log
 bench/
 bench.log
+models/_train_img/
