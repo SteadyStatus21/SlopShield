@@ -73,6 +73,7 @@ $('flush').addEventListener('click', async () => {
 
 // Desktop engine status, checked directly so it shows even before anything has been scanned.
 function checkEngine() {
+  if (location.protocol !== 'chrome-extension:') return; // dev preview: the engine would reject us by origin
   const pill = $('engine');
   let ws: WebSocket;
   try {

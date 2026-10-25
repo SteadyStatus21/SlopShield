@@ -17,7 +17,8 @@ function go(i: number) {
 // Step 1: poll the engine until it answers hello.
 let engineOk = false;
 function checkEngine() {
-  if (engineOk) return;
+  // Outside the extension (e.g. a dev preview) the engine rejects us by origin; don't spam its log.
+  if (engineOk || location.protocol !== 'chrome-extension:') return;
   let ws: WebSocket;
   try {
     ws = new WebSocket(ENGINE.url);
