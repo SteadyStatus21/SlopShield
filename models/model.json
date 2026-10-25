@@ -20,10 +20,11 @@
   "head": "mlp",
   "rule": "min(head, base-0.740+3.350): head>=0.6 AND base>=0.05",
   "trainedOn": {
-    "hfClips": 1299,
+    "hfClips": 1979,
     "yourItems": 91,
     "heldOut": 24,
     "userWeight": 4.0,
-    "trainedAt": "2026-10-25 00:48"
+    "userRealWeight": 8.0,
+    "trainedAt": "2026-10-25 04:22"
   }
 }
