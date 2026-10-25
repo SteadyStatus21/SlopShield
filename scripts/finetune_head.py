@@ -108,8 +108,12 @@ def to_tensor(img):
 # held-out sets) while the base model alone overflags low-quality real video (11/60); flagging
 # only when both agree had 1 false positive across 160 held-out real items. Encoded as one logit:
 #   out = min(head_logit, base_logit + BIAS + AGREE_SHIFT)
-# which reaches the default threshold (0.6) exactly when head ≥ 0.6 AND calibrated base ≥ 0.2.
-AGREE_HEAD_P, AGREE_BASE_P = 0.6, 0.05  # gate lowered from 0.2 on Oct 24 (held-out sweep: +2/12 AI, +1/30 games)
+# which reaches the default threshold (0.6) exactly when head ≥ 0.6 AND calibrated base ≥ AGREE_BASE_P.
+# Gate history: 0.2 -> 0.05 (Oct 24) -> 0.002 (Oct 25). Once the head was trained on real stills, Pexels video and
+# phone-style AI shorts, the base model's veto mostly cost recall: 5-fold CV over the user's 115 labelled items
+# (3 seeds) gave feed AI caught 39.3 -> 43.3/68 and held-out shorts 147 -> 206/241, for feed real flagged
+# 2.7 -> 4.0/47, with real photos 0.3/40 and games 0/30 still flagged.
+AGREE_HEAD_P, AGREE_BASE_P = 0.6, 0.002
 
 
 def agree_shift(base_p: float = AGREE_BASE_P) -> float:

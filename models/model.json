@@ -18,13 +18,8 @@
   ],
   "inputName": "pixel_values",
   "head": "mlp",
-  "rule": "min(head, base-0.740+3.350): head>=0.6 AND base>=0.05",
+  "rule": "min(head, base-0.740+6.618): head>=0.6 AND base>=0.002",
   "trainedOn": {
-    "hfClips": 1979,
-    "yourItems": 91,
-    "heldOut": 24,
-    "userWeight": 4.0,
-    "userRealWeight": 8.0,
-    "trainedAt": "2026-10-25 04:22"
+    "reexported": "2026-10-25 04:35"
   }
 }

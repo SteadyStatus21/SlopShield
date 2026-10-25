@@ -371,11 +371,10 @@ def main():
     say("[5/6] scorecard (threshold 0.6, per item)")
     say("  HELD-OUT items (never trained on) -- the honest numbers:")
     say("    " + scorecard(f"current model ({old_rule}, gate {old_gate:g})", item_probs(hold_rows, old_head, old_rule, old_gate)))
-    for gate in (0.2, 0.1, 0.05, 0.02):
+    for gate in (0.05, 0.01, 0.002):
         mark = " <- installs" if args.rule == "agree" and abs(gate - args.base_gate) < 1e-9 else ""
         say("    " + scorecard(f"new head, agree, gate {gate:g}{mark}", item_probs(hold_rows, new_head, "agree", gate)))
     say("    " + scorecard("new head alone" + (" <- installs" if args.rule == "head" else ""), item_probs(hold_rows, new_head, "head")))
-    say("    (head alone also flagged 9/40 real photos + 6/30 game screenshots in an earlier check; the gate prevents that)")
     say("  YOUR TRAINING items (in-sample, optimistic; shows it learned your labels):")
     say("    " + scorecard(f"current model ({old_rule}, gate {old_gate:g})", item_probs(train_rows, old_head, old_rule, old_gate)))
     say("    " + scorecard(f"new head, rule={args.rule}, gate {args.base_gate:g}", item_probs(train_rows, new_head, args.rule, args.base_gate)))
