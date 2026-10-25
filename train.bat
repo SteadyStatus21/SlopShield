@@ -1,13 +1,23 @@
 @echo off
 rem SlopShield: retrain from your labels (dataset\ai, dataset\real), rebuild the extension.
 rem Loop: label while browsing -> run this -> restart the engine + reload the extension -> repeat.
-rem Options are passed through, e.g.:  train.bat --dry-run    or    train.bat --rule head
+rem A new model is installed only if it wins on the benchmark; then it is also committed and pushed
+rem to GitHub (model.onnx via Git LFS). Options are passed through, e.g.:
+rem   train.bat --dry-run      report only          train.bat --force     install even if it doesn't win
+rem   train.bat --no-push      install, skip git    train.bat --base-gate 0.1
 cd /d "%~dp0"
 set PY=python
 if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
 
 "%PY%" scripts\train_from_labels.py %*
-if errorlevel 1 (
+set RC=%ERRORLEVEL%
+if "%RC%"=="3" (
+  echo.
+  echo The new model did not beat the current one, so nothing was installed or pushed.
+  pause
+  exit /b 0
+)
+if not "%RC%"=="0" (
   echo.
   echo Training failed - see the messages above. Nothing was changed.
   pause

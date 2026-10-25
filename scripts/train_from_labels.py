@@ -38,6 +38,7 @@ CACHE = MODELS / "_train" / "features_ov_v2.npz"  # v2: crops border-trimmed lik
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".webm", ".mov", ".mkv"}
 THRESHOLD = 0.6
+KEPT = 3  # exit code: trained fine, but the new model did not win, so nothing was installed
 MAX_TILES = 3
 
 
@@ -217,8 +218,19 @@ def load_cache():
 
 
 def save_cache(cache):
+    """Merge with what's on disk (another process may have added items), then replace atomically."""
+    import os
+
     CACHE.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(CACHE, cache=np.array(cache, dtype=object))
+    if CACHE.exists():
+        try:
+            for k, v in load_cache().items():
+                cache.setdefault(k, v)
+        except Exception:
+            pass  # unreadable cache on disk: ours replaces it
+    tmp = CACHE.with_name(f"{CACHE.stem}.{os.getpid()}.tmp.npz")
+    np.savez(tmp, cache=np.array(cache, dtype=object))
+    os.replace(tmp, CACHE)
 
 
 # ---------- scoring ----------
@@ -256,6 +268,8 @@ def main():
     ap.add_argument("--base-gate", type=float, default=fh.AGREE_BASE_P,
                     help="agree rule: base model must give at least this (lower = catches more, more false alarms)")
     ap.add_argument("--reexport", action="store_true", help="skip training: re-export the installed head (e.g. new --base-gate)")
+    ap.add_argument("--force", action="store_true", help="install even if the new model doesn't win on the benchmark")
+    ap.add_argument("--no-push", action="store_true", help="install locally but don't commit/push to GitHub")
     args = ap.parse_args()
     t_start = time.time()
 
@@ -357,9 +371,24 @@ def main():
         for k, y, p in sorted(wrong):
             say(f"    {'AI  ' if y else 'REAL'} scored {p:.2f}  dataset/{k}")
 
+    # --- benchmark gate: install (and push) only if the new model wins on all held-out sets ---
+    import bench
+
+    say("      benchmark (user hold-out + 120 videos + 80 stills + 30 games; first run extracts, then cached) ...")
+    sets = bench.load_sets(extract)
+    old_res = bench.evaluate(sets, old_head, old_rule, old_gate)
+    new_res = bench.evaluate(sets, new_head, args.rule, args.base_gate)
+    say(f"      current: {bench.fmt(old_res)}")
+    say(f"      new:     {bench.fmt(new_res)}")
+    wins = bench.objective(new_res) > bench.objective(old_res) + 1e-9
+    say(f"      -> new model {'WINS' if wins else 'does not beat the current one'} "
+        f"(score {bench.objective(new_res):+.3f} vs {bench.objective(old_res):+.3f}; recall minus 4x false-alarm rate)")
     if args.dry_run:
         say("[6/6] dry run: nothing installed.")
         return
+    if not wins and not args.force:
+        say("[6/6] kept the current model (use --force to install anyway). Keep labelling, especially mistakes.")
+        sys.exit(KEPT)
     # --- install ---
     backup = MODELS / "_ref" / "backups" / time.strftime("%Y%m%d-%H%M%S")
     backup.mkdir(parents=True, exist_ok=True)
@@ -372,6 +401,45 @@ def main():
               agree=args.rule == "agree", base_p=args.base_gate)
     say(f"Done in {time.time() - t_start:.0f}s. Installed models/model.onnx ({args.rule} rule).")
     say("Undo: copy the files from the backup folder above back into models/.")
+    if wins and not args.no_push:
+        git_push(new_res, old_res, len(tr_items), len(hold_rows), args)
+
+
+def git_push(new_res, old_res, n_train, n_hold, args):
+    """Commit the winning model (model.onnx via Git LFS + head.npz + model.json) and push it."""
+    import os
+    import subprocess
+
+    import bench
+
+    def git(*a):
+        r = subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True,
+                           env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        return r.returncode, (r.stdout + r.stderr).strip()
+
+    say("Pushing the new model to GitHub ...")
+    git("add", "models/model.onnx", "models/head.npz", "models/model.json")
+    if git("diff", "--cached", "--quiet")[0] == 0:
+        say("  nothing changed to commit.")
+        return
+    msg = "\n".join([
+        "Retrained model from labels: wins on benchmark",
+        "",
+        f"Trained on the public set + {n_train} labelled items (held out: {n_hold}); "
+        f"rule {args.rule}, base gate {args.base_gate:g}, user weight {args.user_weight:g}.",
+        "",
+        "Benchmark (scripts/bench.py, all held-out sets):",
+        f"  before: {bench.fmt(old_res)}",
+        f"  after:  {bench.fmt(new_res)}",
+        "",
+        "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+    ])
+    code, out = git("commit", "-q", "-m", msg)
+    if code:
+        say(f"  commit failed: {out}")
+        return
+    code, out = git("push", "-q", "origin", "HEAD")
+    say("  pushed (model.onnx via Git LFS)." if code == 0 else f"  push failed (committed locally; run 'git push'): {out}")
 
 
 if __name__ == "__main__":
