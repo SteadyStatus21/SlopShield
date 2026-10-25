@@ -13,36 +13,49 @@
 | Source | `python scripts/fetch_model.py` (`torch.onnx.export`, opset 17). The preprocessing goes into `models/model.json`, which the extension and `scripts/eval.py` read. |
 
 
-## Shipped model (Oct 25, 2026): frontier ViT-S + MLP head, agreement rule
+## Shipped model (Oct 25, 2026, 04:35): frontier ViT-S + MLP head, base-model veto
 
 `models/model.onnx` = `Thermostatic/community-forensics-frontier-detector-2026-08` (ViT-S/16 @384, frozen) plus a
-64-unit MLP head on [384-d features, base logit], trained by `scripts/train_from_labels.py` (via `train.bat`) on
-~1,300 AI/real clips (Veo 3, Veo 3.1, Kling, Sora, other generators vs. AudioSet; clean and social-media-degraded),
-~1,600 stills (frontier synthetic AI, real photos, game screenshots, generated text/UI cards) and the user's labels
-(weighted 4x). Output = `min(head, calibrated base + shift)`: it flags only when the head says >= 0.6 AND the base
-model says >= 0.05. Every candidate is scored by `scripts/bench.py`; `train.bat` installs (and pushes) it only if
-the objective (AI recall - 4 x false-positive rate, pooled) beats the installed model.
+64-unit MLP head on [384-d features, base logit], trained by `scripts/train_from_labels.py` (via `train.bat`) on:
+
+- ~2,000 clips: AI = Veo 3, Veo 3.1, Kling, Sora, other Rapidata generators, and 472 phone-style AI shorts
+  (`ymo2017/ai-shorts-videos`); real = AudioSet YouTube clips and 208 modern Pexels stock videos. 3 frames each,
+  clean and social-media-degraded.
+- ~1,600 stills: frontier synthetic AI images; real photos, game screenshots, generated text/UI cards.
+- The user's labels: each crop of an "AI" item counts x4, of a "Not AI" item x8.
+
+Output = `min(head, calibrated base + shift)`: the head decides (>= 0.6), and the base model keeps a veto only when it
+is almost certain a frame is real (< 0.2%). Every candidate is scored by `scripts/bench.py`; `train.bat` installs
+(and pushes) it only if the objective (AI recall - 4 x false-alarm rate, each averaged over the held-out sets) wins.
 
 Held-out (never trained on), threshold 0.6, `python scripts/bench.py`:
 
-| Set | Old CommunityForensics | Frontier only | MLP head only | **Shipped (agreement)** |
+| Set | Old CommunityForensics | Frontier only | MLP head only | **Shipped** |
 |---|---|---|---|---|
-| Modern AI video caught (60: Sora/Veo3/Veo3.1/Kling) | 14 | 57 | 57 | **57** |
+| Modern AI video caught (60: Sora/Veo3/Veo3.1/Kling) | 14 | 57 | 54 | **54** |
 | Real video flagged (60, AudioSet) | 0 | 12 | 1 | **1** |
+| Phone-style AI shorts caught (241, held out by concept) | — | 81 | 232 | **207** |
+| Modern real stock video flagged (88, Pexels) | — | 5 | 3 | **3** |
 | AI still images caught (40, AIGC benchmark) | 34 | 30 | 21 | 21 |
-| Real photos flagged (40) | 0 | 0 | 3 | **0** |
-| Game screenshots flagged (30) | 0 | 0 | 1 | **0** |
+| Real photos flagged (40) | 0 | 0 | 1 | **0** |
+| Game screenshots flagged (30) | 0 | 0 | 0 | **0** |
 | User's in-the-wild AI caught (14, held-out labels) | — | 6 | 8 | 6 |
-| User's in-the-wild real flagged (10, held-out labels) | — | 3 | 2 | **1** |
-| **All sets** | — | 93/114 AI, 15/140 real | 86/114, 7/140 | **84/114, 2/140** |
+| User's in-the-wild real flagged (10, held-out labels) | — | 3 | 2 | 2 |
+| **All sets** | — | 174/355 AI, 20/228 real | 315/355, 7/228 | **288/355, 6/228** |
 
-Also tried on Oct 25 and rejected (5-fold cross-validation over all 115 labelled feed items, plus the public sets): weighting the user's labels 8x or 16x instead of 4x; averaging head and base logits instead of `min`; thresholds 0.4-0.8; ensembles of 2-6 MLP seeds; cropping the bottom 12-30% of each tile to drop player controls. None beat the shipped setup, which scores 39/68 AI caught and 3/47 real flagged on the feed items out-of-fold.
+The 24 held-out feed items are too few to steer by, so recipe decisions used 5-fold cross-validation over all 115
+labelled feed items (3 seeds, every item scored out-of-fold). Shipped recipe: 43.3/68 AI caught, 4.0/47 real flagged.
+Previous recipe (no shorts/Pexels, labels x4/x4, gate 0.05): 37.3/68 and 4.0/47.
 
-How we got here (same benchmark): first head 77/114 AI with 7/140 real flagged; border-trimmed crops 75/6;
-expanded data + logistic head 79/2; MLP head 84/2. Seeds 0-3 of the MLP land at 84-90 AI with 1-4 real flagged;
-32 and 128 units were no better.
+Also tried on Oct 25 and rejected (same cross-validation): weighting all labels 8x or 16x; averaging head and base
+logits instead of `min`; thresholds 0.4-0.8; ensembles of 2-6 MLP seeds; multi-layer backbone features (CLS tokens of
+blocks 3/6/9, mean patch token); cropping the bottom 12-30% of each tile to drop player controls; the low-quality
+continuation of the base model as backbone; Smaug as a second opinion. None beat the shipped setup.
 
-The extension's WebGPU path was checked against native CPU outputs (identical to 3 decimals).
+How we got here (pooled over the original 4 sets, 114 AI / 140 real): first head 77/114 AI with 7/140 real flagged;
+border-trimmed crops 75/6; expanded data + logistic head 79/2; MLP head 84/2. Then on all 6 sets (355 AI / 228 real):
+that model 187/13; + phone-style AI shorts, Pexels real video and x8 "Not AI" labels 229/5; base veto lowered from
+0.05 to 0.002 288/6.
 
 ## How it was chosen (measured Oct 24, 2026)
 

@@ -6,7 +6,7 @@ HackPSU Fall 2026. **Submission due Sun Oct 25, 12:00 PM** (hacking ends 1:45 PM
 
 - Extension works end to end in Helium: finds images/videos (incl. shadow DOM), tiles crops, scores on WebGPU (~150 ms/frame on Iris Xe, verified identical to CPU), flags or blocks, debug tags, ~2 fps budget with jank back-off.
 - Detector: frontier ViT-S + our social-video head, "both must agree" rule (`MODEL.md`).
-  Held-out: 53/60 modern AI videos caught; 1/60 real videos, 0/40 photos, 0/30 game screenshots flagged; user clips 3/7.
+  Held-out (Oct 25, 04:35): 288/355 AI caught, 6/228 real flagged; 54/60 AI videos, 207/241 phone-style AI shorts; 1/60 real videos, 3/88 real stock videos, 0/40 photos, 0/30 games flagged. Feed CV: 43/68 AI, 4/47 real.
 - Captions are a weak nudge only; just platform badges are decisive.
 - Repo: github.com/SteadyStatus21/SlopShield (commit + push every change, author SteadyStatus21, Claude co-author).
 
@@ -41,6 +41,9 @@ Benchmark: `python scripts/bench.py` scores a head on every held-out set exactly
 | Expanded data (1,299 clips + 1,584 stills + labels), logistic head, gate 0.2 | 79/114 | 2/140 |
 | **Expanded data, small MLP head (64 units), gate 0.05 — installed** | **84/114** | **2/140** (your held-out: AI 6/14, real 1/10) |
 | Seed/width check (h32/h64/h128, seeds 0–3) | 84–90/114 | 1–4/140 (h64 kept) |
+| *New sets added (241 held-out AI shorts, 88 held-out Pexels real): same model* | 187/355 | 13/228 |
+| + phone-style AI shorts, Pexels real video, "Not AI" labels x8 | 229/355 | 5/228 |
+| **+ base veto 0.05 → 0.002 — installed** | **288/355** | **6/228** (feed CV: AI 43.3/68, real 4.0/47) |
 
 Findings → fixes so far:
 - Held-out false positives included carousel photos with big black padding and a meme crop with our

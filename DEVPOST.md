@@ -16,7 +16,7 @@ Platform "AI info" labels exist, but most AI posts don't carry one. We wanted so
 
 **Extension (TypeScript, Manifest V3).** A content script finds media (including inside Reddit's shadow DOM), watches what's actually on screen, and requests frames. The service worker captures the visible tab, trims letterbox/padding bars, cuts each item into square tiles that cover the whole post, and batches them for inference. Overlays live in shadow DOM so they never break the page.
 
-**Detector.** A ViT-S/16 trained on images from 4,800+ generators ([Community Forensics](https://huggingface.co/papers/2411.04125), CVPR 2025, frontier fine-tune from Aug 2026), plus a small neural-network decision head we trained ourselves on ~15k crops of modern AI video (Veo 3, Veo 3.1, Kling, Sora) vs. real video, with frames degraded to look like reposted social-media video, real photos, game screenshots, generated text/meme cards, and the user's own labels. It only flags when the head **and** the base model agree, which is what keeps false alarms down.
+**Detector.** A ViT-S/16 trained on images from 4,800+ generators ([Community Forensics](https://huggingface.co/papers/2411.04125), CVPR 2025, frontier fine-tune from Aug 2026), plus a small neural-network decision head we trained ourselves on ~19k crops: modern AI video (Veo 3, Veo 3.1, Kling, Sora) and 470 phone-style AI shorts vs. real YouTube clips and modern stock footage, with frames degraded to look like reposted social-media video, plus real photos, game screenshots, generated text/meme cards, and the user's own labels. The base model keeps a veto when it's almost certain a frame is real, which keeps games and photos clean.
 
 **Fast on a normal laptop.** Our minimum spec is an i7-12700H with Intel Iris Xe graphics:
 
@@ -28,18 +28,18 @@ Platform "AI info" labels exist, but most AI posts don't carry one. We wanted so
 
 The engine is a small Python app on `127.0.0.1` that only accepts our extension's origin; if it's not running, the extension falls back to WebGPU automatically.
 
-**Measuring honestly.** `scripts/bench.py` scores every candidate model exactly the way the extension does, on sets it never trained on: 60 modern AI + 60 real YouTube videos, 80 still images, 30 video-game screenshots, and a held-out slice of our own labelled feed.
+**Measuring honestly.** `scripts/bench.py` scores every candidate model exactly the way the extension does, on sets it never trained on: 60 modern AI + 60 real YouTube videos, 241 phone-style AI shorts, 88 real stock videos, 80 still images, 30 video-game screenshots, and a held-out slice of our own labelled feed.
 
 ## Results (held-out, threshold 0.6)
 
-| | Modern AI videos caught | Real videos flagged | Real photos flagged | Game screenshots flagged |
-|---|---|---|---|---|
-| Our first model (SigLIP) | — | — | 2/40 | **16/30** |
-| Off-the-shelf CommunityForensics | 14/60 | 0/60 | 0/40 | 0/30 |
-| Frontier base model alone | 57/60 | **12/60** | 0/40 | 0/30 |
-| **SlopShield (MLP head + agreement rule)** | **57/60** | **1/60** | **0/40** | **0/30** |
+| | Modern AI videos caught | Phone-style AI shorts caught | Real videos flagged | Real stock videos flagged | Real photos flagged | Game screenshots flagged |
+|---|---|---|---|---|---|---|
+| Our first model (SigLIP) | — | — | — | — | 2/40 | **16/30** |
+| Off-the-shelf CommunityForensics | 14/60 | — | 0/60 | — | 0/40 | 0/30 |
+| Frontier base model alone | 57/60 | 81/241 | **12/60** | 5/88 | 0/40 | 0/30 |
+| **SlopShield** | **54/60** | **207/241** | **1/60** | **3/88** | **0/40** | **0/30** |
 
-On our own in-the-wild feed (held-out labels) it still misses about half of the AI clips — modern generators reposted through Instagram/X are the hardest case, and that's exactly what the labelling loop is for.
+On our own feed (115 posts we labelled on Instagram, X and Facebook, cross-validated) it catches about 64% of the AI posts and flags about 9% of the real ones. Ordinary phone-style AI is the hardest case, which is why we spent the last night adding 470 phone-style AI shorts and 200 modern real videos to training: held-out shorts went from 43% caught to 86%, while false alarms on modern real footage dropped from 11 of 88 to 3.
 
 ## Challenges we ran into
 
@@ -52,13 +52,13 @@ On our own in-the-wild feed (held-out labels) it still misses about half of the 
 
 ## Accomplishments that we're proud of
 
-- Catching **57 of 60** modern AI videos while flagging **1 of 60** real videos, **0 of 40** real photos and **0 of 30** game screenshots — on a laptop iGPU, with no cloud. Overall: **84/114 AI caught, 2/140 real items flagged** across every held-out set.
+- Catching **54 of 60** modern AI videos and **207 of 241** phone-style AI shorts while flagging **1 of 60** real videos, **3 of 88** real stock videos, **0 of 40** real photos and **0 of 30** game screenshots — on a laptop iGPU, with no cloud. Overall: **288/355 AI caught, 6/228 real items flagged** across every held-out set.
 - A real human-in-the-loop: label in the feed → retrain in ~1 minute → auto-install only if the benchmark improves → auto-commit to GitHub.
 - Every number above comes from a reproducible benchmark script, not a demo cherry-pick.
 
 ## What we learned
 
-Per-frame image detectors can't see motion glitches (a spoon teleporting into a pan), they're easily fooled by graphics, text cards and phone beauty filters, and accuracy numbers mean nothing unless you test on the content your users actually see. Measuring on our own feed changed almost every design decision. For example, we got a 20x larger Gemma-based detector (Smaug, 439M params) running on the Iris Xe through OpenVINO as a "second opinion". It looked great on public benchmarks, but on our own labelled feed it ranked AI vs. real worse than a coin flip (AUC 0.45 vs. 0.69 for ours), so it didn't ship.
+Per-frame image detectors can't see motion glitches (a spoon teleporting into a pan), they're easily fooled by graphics, text cards and phone beauty filters, and accuracy numbers mean nothing unless you test on the content your users actually see. Measuring on our own feed changed almost every design decision. For example, we got a 20x larger Gemma-based detector (Smaug, 439M params) running on the Iris Xe through OpenVINO as a "second opinion". It looked great on public benchmarks, but on our own labelled feed it ranked AI vs. real worse than a coin flip (AUC 0.45 vs. 0.69 for ours), so it didn't ship. And the safety gate we'd added early on (only flag when the base model agrees) turned out, once the training data was better, to be mostly vetoing real catches: relaxing it took held-out phone-style AI from 62% caught to 86% with no extra false alarms on photos or games.
 
 ## What's next
 
