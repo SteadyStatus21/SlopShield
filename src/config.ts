@@ -143,3 +143,11 @@ export const TEXT = {
 // proved unreliable in both directions ("AI farm of phones" on real footage; AI videos with no
 // caption cue), so only platform badges (PLATFORM_LABEL_PATTERNS) can decide without vision.
 export const TEXT_DECISIVE = Infinity;
+
+// Optional desktop engine (engine/slopshield_engine.py): native OpenVINO scoring on the local GPU.
+// The extension uses it when it's running and falls back to in-browser WebGPU/WASM otherwise.
+export const ENGINE = {
+  url: 'ws://127.0.0.1:47321',
+  retryMs: 10_000, // how often to look for the engine while it isn't running
+  timeoutMs: 5_000, // per request; on timeout that batch falls back to the in-browser model
+};

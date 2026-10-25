@@ -46,7 +46,7 @@ async function infer(images: string[], gpu: boolean): Promise<number[]> {
     backend = { ...backend, modelLoaded: false, error: resp?.error ?? 'no response' };
     throw new Error(backend.error);
   }
-  backend = { backend: resp.backend, modelLoaded: true };
+  backend = { backend: resp.backend, device: resp.device, modelLoaded: true };
   return resp.scores;
 }
 

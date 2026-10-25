@@ -23,13 +23,15 @@ async function refresh() {
   const st: Status | null = await chrome.runtime.sendMessage({ kind: 'GET_STATUS' });
   if (!st) return;
   const be = $('backend');
-  be.textContent = st.backend.modelLoaded
-    ? `model: ${st.backend.backend}`
-    : st.backend.error
+  be.textContent = !st.backend.modelLoaded
+    ? st.backend.error
       ? 'model: error'
-      : 'model: idle';
+      : 'model: idle'
+    : st.backend.backend === 'engine'
+      ? 'desktop engine'
+      : `in-browser: ${st.backend.backend}`;
   be.className = `pill ${st.backend.modelLoaded ? 'ok' : st.backend.error ? 'bad' : ''}`;
-  be.title = st.backend.error ?? '';
+  be.title = st.backend.error ?? st.backend.device ?? '';
   const crops = $('crops');
   crops.hidden = !(s.debug && st.lastCrops.length);
   if (crops.dataset.key !== st.lastCrops.join('|').slice(-64)) {

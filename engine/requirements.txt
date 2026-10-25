@@ -1,0 +1,4 @@
+openvino>=2026.4
+websockets>=17
+numpy
+pillow

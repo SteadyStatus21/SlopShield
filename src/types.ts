@@ -27,7 +27,8 @@ export interface Verdict {
 }
 
 export interface BackendInfo {
-  backend: 'webgpu' | 'wasm' | 'none';
+  backend: 'engine' | 'webgpu' | 'wasm' | 'none'; // engine = desktop app (engine/), else in-browser
+  device?: string; // engine only: e.g. 'GPU (Intel(R) Iris(R) Xe Graphics)'
   modelLoaded: boolean;
   error?: string;
 }
@@ -48,7 +49,9 @@ export type OffscreenMsg =
   | { target: 'offscreen'; kind: 'INFER'; images: string[]; gpu: boolean } // data URLs, already resized
   | { target: 'offscreen'; kind: 'STATUS' };
 
-export type InferResp = { ok: true; scores: number[]; backend: BackendInfo['backend'] } | { ok: false; error: string };
+export type InferResp =
+  | { ok: true; scores: number[]; backend: BackendInfo['backend']; device?: string }
+  | { ok: false; error: string };
 
 // popup → sw
 export type UiMsg = { kind: 'GET_STATUS' };

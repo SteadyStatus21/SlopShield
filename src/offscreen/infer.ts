@@ -1,6 +1,6 @@
 // Load ONNX session, preprocess, run, return P(AI). Runs in the offscreen document.
 import * as ort from 'onnxruntime-web/webgpu';
-import { MODEL, OFFSCREEN_IDLE_MS } from '../config';
+import { ENGINE, MODEL, OFFSCREEN_IDLE_MS } from '../config';
 import { log, warn } from '../log';
 import type { BackendInfo, InferResp, ModelMeta, OffscreenMsg } from '../types';
 
@@ -95,7 +95,75 @@ function pAI(logits: Float32Array, aiIndex: number, logitBias = 0): number {
   return exps[aiIndex] / sum;
 }
 
+// ---------- desktop engine (engine/slopshield_engine.py) ----------
+// When the local engine is running, crops are scored there (native OpenVINO on the iGPU, ~3x faster
+// than WebGPU). If it isn't running, or fails, everything falls back to the in-browser model below.
+
+let engine: WebSocket | null = null;
+let engineDevice: string | null = null; // set once the engine has said hello
+let lastEngineAttempt = 0;
+const pending = new Map<number, (r: { scores?: number[]; error?: string }) => void>();
+let nextId = 1;
+
+function connectEngine() {
+  if (engine || Date.now() - lastEngineAttempt < ENGINE.retryMs) return;
+  lastEngineAttempt = Date.now();
+  let ws: WebSocket;
+  try {
+    ws = new WebSocket(ENGINE.url);
+  } catch {
+    return;
+  }
+  engine = ws;
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'hello' }));
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(String(ev.data));
+    if (msg.type === 'hello') {
+      engineDevice = msg.device;
+      log('desktop engine connected:', msg.device, msg.model);
+    } else if (pending.has(msg.id)) {
+      pending.get(msg.id)!(msg.type === 'scores' ? { scores: msg.scores } : { error: msg.error ?? 'engine error' });
+      pending.delete(msg.id);
+    }
+  };
+  ws.onclose = () => {
+    if (engineDevice) log('desktop engine disconnected; using in-browser model');
+    engine = null;
+    engineDevice = null;
+    for (const resolve of pending.values()) resolve({ error: 'engine disconnected' });
+    pending.clear();
+  };
+  ws.onerror = () => {}; // onclose follows; not running is the normal case
+}
+
+function scoreOnEngine(images: string[]): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    const id = nextId++;
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error('engine timeout'));
+    }, ENGINE.timeoutMs);
+    pending.set(id, (r) => {
+      clearTimeout(timer);
+      if (r.scores) resolve(r.scores);
+      else reject(new Error(r.error));
+    });
+    engine!.send(JSON.stringify({ type: 'score', id, images }));
+  });
+}
+
 async function inferAll(images: string[], gpu: boolean): Promise<InferResp> {
+  connectEngine();
+  if (engine?.readyState === WebSocket.OPEN && engineDevice) {
+    try {
+      const t0 = performance.now();
+      const scores = await scoreOnEngine(images);
+      log(`${images.length} tile(s) on engine: P(AI)=[${scores.map((p) => p.toFixed(2)).join(', ')}] in ${(performance.now() - t0).toFixed(0)}ms`);
+      return { ok: true, scores, backend: 'engine', device: engineDevice };
+    } catch (e) {
+      warn('engine failed, falling back to in-browser model', e);
+    }
+  }
   try {
     const { session, meta, backend } = await getModel(gpu);
     const inputName = session.inputNames.includes(meta.inputName) ? meta.inputName : session.inputNames[0];
@@ -131,6 +199,7 @@ function touch() {
   }, OFFSCREEN_IDLE_MS);
 }
 touch();
+connectEngine();
 
 chrome.runtime.onMessage.addListener((msg: OffscreenMsg, _sender, sendResponse) => {
   if (msg?.target !== 'offscreen') return false;
