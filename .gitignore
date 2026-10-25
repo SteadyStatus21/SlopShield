@@ -12,11 +12,8 @@ dataset/
 models/_train/
 # Intel GPU compiler debug output (written when OpenVINO compiles on the iGPU)
 kernel.errors.txt
-engine.log
 engine/last_crops/
-train.log
 bench/
-bench.log
 models/_train_img/
-fetch.log
-exp2.log
+# experiment / tool logs
+*.log
