@@ -9,6 +9,9 @@
 //   ai_04 = ai_veo31_veo31_55_0     ai_05 = ai_sora_017_20250114_sora
 //   real_01 = real_youtube_-qGd1JwYLbQ   real_02 = real_youtube_-urYwYLrcMA   real_03 = real_youtube_-Ar7D-GARhI
 //   real_04 = real_youtube_-SD9DkKyOrY   real_05 = real_youtube_-oYYvzarYDs   real_06 = real_youtube_-ECK_BisOLM
+//   ai_06 = bench/shorts/ai/ai_shorts_s85-take3-rework-music-720x1280   ai_07 = bench/shorts/ai/ai_shorts_hamster-roborovski
+// ai_06 and ai_07 are vertical phone-style AI shorts the previous model missed (0.2-0.3 and 0.55-0.6) and the
+// current one flags (~0.97).
 window.CLIPS = [
   { file: 'real_01.mp4', author: 'Linda Park', caption: 'Biscuit is worn out after our morning walk 🐶' },
   { file: 'ai_01.mp4', author: 'Faith & Blessings Daily', caption: 'Good morning ☕ God bless your day! Type AMEN and share with 10 friends 🙏', platformLabel: 'AI info' },
@@ -21,4 +24,6 @@ window.CLIPS = [
   { file: 'real_05.mp4', author: 'Ridge Car Club', caption: 'Track day! Mike finally got his BMW out on the Nürburgring 🏁 (no, this is not AI lol)' },
   { file: 'ai_05.mp4', author: 'Kai Mahoe', caption: 'Dawn patrol at Pipeline 🌊🏄 what a morning' },
   { file: 'real_06.mp4', author: 'Little Sprouts Preschool', caption: "The kids voted: Mr. Broccoli is the star of this week's veggie song 🥦" },
+  { file: 'ai_06.mp4', author: 'FreshMart Deals', caption: '🛒 Prices just dropped 50% at every FreshMart! Claim your $100 coupon before midnight 👇' },
+  { file: 'ai_07.mp4', author: 'Pocket Pets Daily', caption: 'Peanut says good morning 🐹💕 share if he made you smile!' },
 ];
