@@ -19,3 +19,4 @@ bench/
 bench.log
 models/_train_img/
 fetch.log
+exp2.log

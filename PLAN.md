@@ -37,6 +37,7 @@ Benchmark: `python scripts/bench.py` scores a head on every held-out set exactly
 |---|---|---|
 | Baseline: installed head, agree gate 0.05 | 77/114 | 7/140 |
 | Head/gate hyper-parameter sweep (same data) | 76–79/114 | 5–7/140 (plateau) |
+| Same installed head, border-trimmed crops | 75/114 | 6/140 (your held-out real: 3/10 → 1/10) |
 
 Findings → fixes so far:
 - Held-out false positives included carousel photos with big black padding and a meme crop with our
