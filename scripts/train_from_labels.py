@@ -34,7 +34,7 @@ DATASET = ROOT / "dataset"
 MODELS = ROOT / "models"
 TRAIN_DIR = MODELS / "_train"
 FEATURES_ONNX = MODELS / "_ref" / "features.onnx"
-CACHE = MODELS / "_train" / "features_ov.npz"
+CACHE = MODELS / "_train" / "features_ov_v2.npz"  # v2: crops border-trimmed like the extension
 IMG = {".png", ".jpg", ".jpeg", ".webp"}
 VID = {".mp4", ".webm", ".mov", ".mkv"}
 THRESHOLD = 0.6
@@ -121,6 +121,13 @@ def tiles(img: Image.Image, trim: bool = True):
 
 # ---------- data ----------
 
+def saved_tile(path):
+    """A tile saved by the extension; older ones may still contain padding bars, so trim + retile those."""
+    img = Image.open(path).convert("RGB")
+    trimmed = trim_borders(img)
+    return [img] if trimmed is img else tiles(trimmed, trim=False)
+
+
 def user_items():
     """{item_id: (label 0/1, [(cache_key, loader)])} from dataset/ai and dataset/real."""
     items = {}
@@ -130,7 +137,7 @@ def user_items():
             continue
         for p in sorted(root.iterdir()):
             if p.is_dir() and any(p.glob("tile*.png")):  # saved by the extension: tiles are model-ready
-                items[f"{lab_name}/{p.name}"] = (y, [(f"u:{t.relative_to(DATASET)}", lambda t=t: [Image.open(t)])
+                items[f"{lab_name}/{p.name}"] = (y, [(f"u:{t.relative_to(DATASET)}", lambda t=t: saved_tile(t))
                                                      for t in sorted(p.glob("tile*.png"))])
             elif p.is_dir():
                 for f in sorted(p.rglob("*")):
@@ -257,6 +264,7 @@ def main():
         if key not in cache:
             rows = []
             for fr in fh.frames(v):
+                fr = trim_borders(fr)
                 for view in (fr, fh.degrade(fr, rng)):
                     k = fh.SHORT / min(view.size)
                     im = view.resize((round(view.width * k), round(view.height * k)), Image.BICUBIC)
