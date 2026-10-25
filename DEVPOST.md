@@ -1,69 +1,52 @@
 ## Inspiration
 
-Our grandparents' feeds are full of videos that never happened: a "soldier's daughter" singing to troops, a celebrity explaining how to double your savings, a cute animal rescue that's physically impossible. Modern video generators (Sora, Veo 3, Kling, Seedance) made this content cheap, and scammers noticed. Americans 60 and older reported **$7.75 billion** in internet-crime losses to the FBI in 2025, about 60% more than in 2024, and IC3 logged over 3,100 senior complaints that explicitly involved AI ([AARP on the FBI IC3 2025 report](https://www.aarp.org/money/scams-fraud/fbi-ftc-report-2025-losses.html), [HousingWire](https://www.housingwire.com/articles/fbi-seniors-cybercrime-2025/)).
+If you've scrolled Facebook with a grandparent lately, you've seen it: a little girl singing to soldiers, a celebrity "explaining" a crypto trick, a dog rescuing a baby from a river. None of it happened. Tools like Sora, Veo and Kling made fake video cheap, and scammers figured that out fast. The FBI's 2025 internet crime report put losses for Americans over 60 at $7.75 billion, up about 60% from the year before, with more than 3,100 senior complaints that specifically involved AI ([AARP's summary](https://www.aarp.org/money/scams-fraud/fbi-ftc-report-2025-losses.html), [HousingWire](https://www.housingwire.com/articles/fbi-seniors-cybercrime-2025/)).
 
-Platform "AI info" labels exist, but most AI posts don't carry one. We wanted something that sits between the feed and the person and says *"careful, this is probably AI"* — without sending anyone's browsing to a server.
+Some platforms do label AI content, but most AI posts never get a label. We wanted something that sits quietly in the browser and taps you on the shoulder when a video is probably fake, without sending what you watch to anyone's server.
 
 ## What it does
 
-**SlopShield** is a Chrome/Chromium extension (plus an optional desktop engine) that scans the images and videos you scroll past on Instagram, X, Reddit, YouTube or any site, and:
+SlopShield is a browser extension that checks the videos and images you scroll past on Instagram, Facebook, X, YouTube and pretty much any other site. When something looks AI-generated, it either puts a big red "Likely AI-generated" banner on it, or, if you picked blocking, it pauses it, blurs it and covers it with a warning. You can still watch it, but you have to click twice to get through, which is on purpose.
 
-- **Warns** about likely-AI media with a big red banner and outline, or **blocks** it: blurred, paused and hidden behind a warning that takes two deliberate clicks to dismiss ("Show anyway" → "Yes, I understand").
-- Sets itself up in plain language: on install, a welcome page walks you through the optional desktop helper (with a live "connected" check) and asks whether you want warnings or blocking.
-- Runs **100% on your device.** Frames are cropped and scored locally; nothing is uploaded.
-- Lets you **correct it with one click** ("Yes, AI" / "Not AI"). Each click saves that item as a labelled example, and `train.bat` retrains the detector from your labels in about a minute — but only installs (and pushes) the new model if it beats the old one on a held-out benchmark.
+Everything runs on your own computer. There's an optional helper app that uses your laptop's graphics chip to make checks a lot faster, and when you install the extension, a setup page walks you through getting it running and asks whether you'd rather be warned or blocked.
+
+If it gets something wrong, there are "Yes, AI" and "Not AI" buttons right on the post. Those clicks save examples, and running `train.bat` retrains the detector on them in about a minute. It only swaps in the new model if it actually scores better on a test set it has never seen, so a bad batch of labels can't quietly make it worse.
 
 ## How we built it
 
-**Extension (TypeScript, Manifest V3).** A content script finds media (including inside Reddit's shadow DOM), watches what's actually on screen, and requests frames. The service worker captures the visible tab, trims letterbox/padding bars, cuts each item into square tiles that cover the whole post, and batches them for inference. Overlays live in shadow DOM so they never break the page.
+The extension is TypeScript (Chrome Manifest V3). A content script finds every image and video on the page, including ones hidden inside Reddit's shadow DOM, and watches which ones are actually on screen. The background worker takes a screenshot, crops out each video, trims black letterbox bars, and cuts tall videos into a few square tiles so the model sees the whole frame and not just the middle.
 
-**Detector.** A ViT-S/16 trained on images from 4,800+ generators ([Community Forensics](https://huggingface.co/papers/2411.04125), CVPR 2025, frontier fine-tune from Aug 2026), plus a small neural-network decision head we trained ourselves on ~19k crops: modern AI video (Veo 3, Veo 3.1, Kling, Sora) and 470 phone-style AI shorts vs. real YouTube clips and modern stock footage, with frames degraded to look like reposted social-media video, plus real photos, game screenshots, generated text/meme cards, and the user's own labels. The base model keeps a veto when it's almost certain a frame is real, which keeps games and photos clean.
+For the detector we started from a small vision transformer (ViT-S) from the [Community Forensics](https://huggingface.co/papers/2411.04125) project, which was trained on images from over 4,800 different generators. On top of it we trained our own small decision layer on about 19,000 crops: AI video from Veo, Kling and Sora, a few hundred phone-style AI shorts, real YouTube clips, real stock footage, photos, video game screenshots, meme-style text cards, and our own labelled scrolling. We also degraded a lot of the frames on purpose (shrinking, recompressing, adding captions) so they'd look like something that's been reposted five times.
 
-**Fast on a normal laptop.** Our minimum spec is an i7-12700H with Intel Iris Xe graphics:
+Speed mattered because our test machine is a normal laptop with Intel integrated graphics. On the CPU in the browser a single crop takes about 1.6 seconds. WebGPU gets that to around 150 ms. The helper app runs the same model through Intel's OpenVINO and gets it down to about 47 ms. It only listens on your own machine and only talks to our extension, and if it isn't running, the extension just falls back to WebGPU.
 
-| Runtime | Time per crop |
-|---|---|
-| WASM (CPU, in browser) | ~1.6 s |
-| WebGPU (Iris Xe, in browser) | ~150 ms |
-| **Desktop engine, OpenVINO on Iris Xe** | **~47 ms** |
-
-The engine is a small Python app on `127.0.0.1` that only accepts our extension's origin; if it's not running, the extension falls back to WebGPU automatically.
-
-**Measuring honestly.** `scripts/bench.py` scores every candidate model exactly the way the extension does, on sets it never trained on: 60 modern AI + 60 real YouTube videos, 241 phone-style AI shorts, 183 clips from the newest generators (Seedance 1.5 Pro, Kling 2.5), 198 real stock videos, 80 still images, 30 video-game screenshots, and a held-out slice of our own labelled feed.
-
-## Results (held-out, threshold 0.6)
-
-| | Modern AI videos caught | Phone-style AI shorts caught | Newest generators caught | Real videos flagged | Real stock videos flagged | Real photos flagged | Game screenshots flagged |
-|---|---|---|---|---|---|---|---|
-| Our first model (SigLIP) | — | — | — | — | — | 2/40 | **16/30** |
-| Off-the-shelf CommunityForensics | 14/60 | — | — | 0/60 | — | 0/40 | 0/30 |
-| Frontier base model alone | 57/60 | 81/241 | 163/183 | **12/60** | 19/198 | 0/40 | 0/30 |
-| **SlopShield** | **54/60** | **207/241** | **162/183** | **1/60** | **13/198** | **0/40** | **0/30** |
-
-On our own feed (115 posts we labelled on Instagram, X and Facebook, cross-validated) it catches about 64% of the AI posts and flags about 9% of the real ones. Ordinary phone-style AI is the hardest case, which is why we spent the last night adding 470 phone-style AI shorts and 200 modern real videos to training: held-out shorts went from 43% caught to 86%, while false alarms on modern real stock footage halved (26 of 198 to 13).
+To keep ourselves honest we wrote a benchmark script that scores every model exactly the way the extension does, on clips it never trained on. On those held-out sets the current model catches 54 of 60 modern AI videos, 207 of 241 phone-style AI shorts and 162 of 183 clips from the newest generators (Seedance 1.5, Kling 2.5). It wrongly flags 1 of 60 real videos, 13 of 198 real stock clips, and none of the 40 real photos or 30 game screenshots. On the posts we labelled from our own feeds, it catches roughly two out of three AI posts and wrongly flags about one in eleven real ones. That last number is the one we care about most, and it's the one we'd most like to improve.
 
 ## Challenges we ran into
 
-- **Video games and CGI** look "synthetic" to image detectors on every frame — our first model flagged 16 of 30 game screenshots. Fixed by switching models and requiring two models to agree.
-- **Instagram Reels fought back.** Pausing a blocked reel made Instagram call `play()` again: ~4,500 play events per second per blocked reel, which made the browser unusable. We now pause once, mute, and hide instead of fighting.
-- **Thumbnails vs. videos.** Instagram stacks a poster image under every reel; we were blocking the poster while the real video played on top.
-- **Our own UI leaked into the model's input:** a debug tag inside one crop, and black carousel padding in others both caused false positives. Now the capture area skips our own labels and flat borders are trimmed.
-- **GPU backends lie.** DirectML on Iris Xe returned the same number for every image; we verified each backend (WebGPU, OpenVINO) against CPU outputs before trusting it.
-- **Captions are unreliable** in both directions ("AI farm of phones" on real footage; AI videos with no caption at all), so only real platform badges can override the vision model.
+Video games were the first big problem. Our original model thought rendered graphics were AI on every single frame and flagged 16 of 30 game screenshots. Switching base models and adding a second check got that to zero.
+
+Instagram Reels fought us. When we paused a blocked reel, Instagram immediately pressed play again, and our code paused it again, thousands of times a second, until the browser locked up. Now we pause once, mute it and hide it instead of arguing with the page.
+
+Our own UI kept ending up in the model's input. A debug label inside a screenshot crop, or the black padding around an Instagram carousel, was enough to cause false alarms. The capture area now skips our labels, and flat borders get trimmed before anything is scored.
+
+GPU drivers lied to us. One backend (DirectML on the Intel chip) returned the exact same score for every image, so we checked every backend against plain CPU output before trusting it.
+
+And captions turned out to be useless as evidence. Real videos say "AI" in the caption as a joke, and plenty of AI videos have no caption at all, so only real platform labels like "Made with AI" are trusted without the vision model.
 
 ## Accomplishments that we're proud of
 
-- Catching **54 of 60** modern AI videos, **207 of 241** phone-style AI shorts and **162 of 183** clips from the newest generators, while flagging **1 of 60** real videos, **13 of 198** real stock videos, **0 of 40** real photos and **0 of 30** game screenshots — on a laptop iGPU, with no cloud. Overall: **450/538 AI caught, 16/338 real items flagged** across every held-out set.
-- A real human-in-the-loop: label in the feed → retrain in ~1 minute → auto-install only if the benchmark improves → auto-commit to GitHub.
-- Every number above comes from a reproducible benchmark script, not a demo cherry-pick.
+It runs on a regular laptop with no cloud at all, it's fast enough to keep up with scrolling, and it keeps game footage and real photos clean while catching most of the AI video we threw at it. We're also proud of the feedback loop: label something while you scroll, retrain in a minute, and the new model only goes live if the numbers say it's better. Every number in this writeup comes out of that benchmark script, not from picking good demo clips.
 
 ## What we learned
 
-Per-frame image detectors can't see motion glitches (a spoon teleporting into a pan), they're easily fooled by graphics, text cards and phone beauty filters, and accuracy numbers mean nothing unless you test on the content your users actually see. Measuring on our own feed changed almost every design decision. For example, we got a 20x larger Gemma-based detector (Smaug, 439M params) running on the Iris Xe through OpenVINO as a "second opinion". It looked great on public benchmarks, but on our own labelled feed it ranked AI vs. real worse than a coin flip (AUC 0.45 vs. 0.69 for ours), so it didn't ship. And the safety gate we'd added early on (only flag when the base model agrees) turned out, once the training data was better, to be mostly vetoing real catches: relaxing it took held-out phone-style AI from 62% caught to 86% with no extra false alarms on photos or games.
+Mostly, that you have to test on the stuff your users actually see. We got a much bigger detector (Smaug, about 20 times our model's size) running on the laptop as a second opinion. It looked great on public benchmarks, but on posts from our own feeds it did worse than flipping a coin, so we dropped it. A safety rule we added early, where both models had to agree before flagging anything, also turned out to be blocking real catches once our training data got better. Loosening it took held-out phone-style AI from 62% caught to 86% without adding false alarms on photos or games.
+
+We also learned that single frames only get you so far. A model looking at one frame can't notice a spoon teleporting into a pan.
 
 ## What's next
 
-- Temporal (multi-frame) detection to catch motion artifacts.
-- More in-the-wild training data: ordinary phone-style AI clips (Sora 2 app reposts) are the hardest case, and the one-click labelling loop is how we collect them.
-- Parent mode (PIN-protected), per-site allowlists, and warnings for remote-access / tech-support scam pages.
+- Looking at motion across frames, since that's where a lot of AI video still gives itself away.
+- More real-world training data, especially ordinary-looking phone videos, which are still the hardest case.
+- A parent mode with a PIN, per-site allowlists, and warnings on the remote-access and "tech support" pages that scammers send people to.
 - A mobile version.
